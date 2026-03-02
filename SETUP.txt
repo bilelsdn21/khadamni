@@ -1,0 +1,209 @@
+=====================================
+  KHADAMNI - Setup Guide
+=====================================
+
+This guide will help you set up and run the Khadamni project locally.
+
+
+PREREQUISITES
+=============
+Make sure you have these installed on your machine:
+
+1. Node.js (v18 or higher)
+   Download: https://nodejs.org/
+
+2. Python (v3.10 or higher)
+   Download: https://www.python.org/downloads/
+
+3. MongoDB (v6 or higher)
+   Download: https://www.mongodb.com/try/download/community
+   Also install MongoDB Compass (GUI) — usually bundled with MongoDB.
+
+4. Git
+   Download: https://git-scm.com/downloads
+
+
+STEP 1 — CLONE THE PROJECT
+===========================
+
+   git clone <your-repo-url>
+   cd khadamni
+
+
+STEP 2 — BACKEND SETUP
+=======================
+
+1. Open a terminal and go to the backend folder:
+
+   cd backend
+
+2. Create a Python virtual environment:
+
+   python -m venv venv
+
+3. Activate the virtual environment:
+
+   Windows CMD:       venv\Scripts\activate
+   Windows Git Bash:  source venv/Scripts/activate
+   Mac/Linux:         source venv/bin/activate
+
+   You should see (venv) at the start of your terminal line.
+
+4. Install Python dependencies:
+
+   pip install -r requirements.txt
+
+5. Fix bcrypt version (required for passlib compatibility):
+
+   pip install bcrypt==4.0.1
+
+6. Create your .env file in the backend/ folder with these variables:
+
+   MONGODB_URL=mongodb://localhost:27017
+   DATABASE_NAME=khadamni
+   SECRET_KEY=change-me-in-production
+
+7. Make sure MongoDB is running on your machine, then start the server:
+
+   uvicorn app.main:app --reload
+
+8. Verify it works:
+
+   - Terminal should print: "Connected to MongoDB: khadamni"
+   - Open browser: http://localhost:8000/api/health  ->  {"status": "ok"}
+   - Open browser: http://localhost:8000/docs  ->  API documentation
+
+
+STEP 3 — FRONTEND SETUP
+========================
+
+1. Open a NEW terminal (keep the backend running) and go to the frontend folder:
+
+   cd frontend
+
+2. Install dependencies:
+
+   npm install
+
+3. Start the development server:
+
+   npm run dev
+
+4. Open your browser at:
+
+   http://localhost:5173
+
+
+RUNNING THE PROJECT
+===================
+You need TWO terminals running at the same time:
+
+   Terminal 1 (Backend):
+      cd backend
+      venv\Scripts\activate        (Windows CMD)
+      uvicorn app.main:app --reload
+
+   Terminal 2 (Frontend):
+      cd frontend
+      npm run dev
+
+The frontend runs on http://localhost:5173
+The backend runs on http://localhost:8000
+The frontend proxies /api requests to the backend automatically.
+
+
+TECH STACK
+==========
+Frontend:  React 19 + Vite + Tailwind CSS v4
+Backend:   FastAPI (Python) + MongoDB (Motor async driver)
+Maps:      Leaflet + OpenStreetMap (free)
+Auth:      JWT + bcrypt
+Realtime:  FastAPI WebSockets
+
+
+PROJECT STRUCTURE
+=================
+khadamni/
+   backend/              Python FastAPI server
+      app/
+         main.py         App entry point + CORS + router registration
+         config.py       Environment settings (reads .env)
+         database.py     MongoDB connection (Motor)
+         models/         Pydantic schemas (user, provider, etc.)
+         routers/        API route handlers (auth, users, etc.)
+         services/       Business logic (auth_service, etc.)
+         websockets/     Real-time handlers (chat, notifications)
+         utils/          Helpers (security, geo, validators)
+      requirements.txt   Python dependencies
+
+   frontend/             React application
+      src/
+         pages/          Page components (Login, Register)
+         layouts/        Layout wrappers (AuthLayout)
+         components/     Reusable UI components
+         context/        React context (AuthContext)
+         hooks/          Custom React hooks (useAuth)
+         api/            Axios client + API calls
+
+
+CURRENT PROGRESS
+================
+Here is what has been implemented so far:
+
+Backend (FastAPI + MongoDB):
+   [DONE] config.py        - Loads environment variables from .env using pydantic-settings
+   [DONE] database.py      - Async MongoDB connection using Motor driver
+   [DONE] main.py          - FastAPI app with CORS, lifespan (DB connect/disconnect),
+                              health check endpoint, and auth router registration
+   [DONE] utils/security.py - Password hashing and verification using bcrypt
+   [DONE] models/user.py   - UserCreate schema (first_name, last_name, email, password, role, avatar)
+   [DONE] models/provider.py - ProviderCreate schema (bio, service_categories, hourly_rate)
+   [DONE] services/auth_service.py - Register logic (check duplicate email, hash password, save to DB)
+   [DONE] routers/auth.py  - POST /api/auth/register endpoint
+
+   Available API endpoints:
+      GET  /api/health          - Health check (returns {"status": "ok"})
+      POST /api/auth/register   - Register a new user (client or provider)
+
+Frontend (React + Vite + Tailwind):
+   [DONE] Login page        - Email + password form with dark theme
+   [DONE] Register page     - Full registration form with role selector (client/provider)
+   [DONE] AuthLayout        - Shared layout wrapper for auth pages
+   [DONE] AuthContext       - React context for auth state management
+   [DONE] Axios setup       - API client with JWT interceptors
+   [NOT CONNECTED] Frontend is not yet connected to backend endpoints
+
+Still to build:
+   - Login endpoint (JWT token generation)
+   - Token refresh and logout
+   - Temp email detection during registration
+   - User profiles and provider profiles
+   - Map-based provider discovery
+   - Service request flow
+   - Real-time chat (WebSocket)
+   - Live location tracking
+   - Ratings and reviews
+   - Job history
+   - Connect frontend to backend
+
+
+TROUBLESHOOTING
+===============
+
+1. "uvicorn is not recognized"
+   -> Your virtual environment is not activated. Run: venv\Scripts\activate
+
+2. "bcrypt.__about__ AttributeError"
+   -> Run: pip install bcrypt==4.0.1
+
+3. "Extra inputs are not permitted" (pydantic error)
+   -> Your .env file has variables that are not defined in config.py
+      Make sure they match exactly.
+
+4. MongoDB connection error
+   -> Make sure MongoDB is installed and running.
+      Check in MongoDB Compass: connect to mongodb://localhost:27017
+
+5. CORS error in browser
+   -> Make sure the backend is running on port 8000
+      and the frontend is running on port 5173
