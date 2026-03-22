@@ -7,12 +7,17 @@ class UserCreate(BaseModel):
     last_name: str
     email: EmailStr
     password: str
-    role: str                                    # "client" or "provider"
-    phone: Optional[str] = None
+    role: str
+    phone: str = None
+    latitude: float= None
+    longitude: float = None
 
     # Required only for providers (optional for clients)
-    bio: Optional[str] = None                    # about me
-    service_categories: Optional[List[str]] = None   # ["plumbing", "electrical"]
-    hourly_rate: Optional[float] = None          # price per hour
-    experience_years: Optional[int] = None       # years of experience
-    avatar: Optional[str] = None                 # profile image URL
+    bio: Optional[str] = None
+    service_categories: Optional[List[str]] = None
+    hourly_rate: Optional[float] = None
+    experience_years: Optional[str] = None
+    avatar: Optional[str] = None
+class UserLogin(BaseModel):
+    email: str
+    password: str 

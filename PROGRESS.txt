@@ -1,0 +1,199 @@
+================================================================
+KHADAMNI — DEVELOPMENT PROGRESS REPORT
+================================================================
+Project : Khadamni (خدمني) — Real-Time Location-Based Service Marketplace
+Stack   : FastAPI + MongoDB + React 19 + Vite + Tailwind CSS v4
+Date    : 2026-03-22
+================================================================
+
+
+----------------------------------------------------------------
+1. PROJECT STRUCTURE
+----------------------------------------------------------------
+khadamni/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI entry point
+│   │   ├── config.py            # Environment settings loader
+│   │   ├── database.py          # MongoDB async connection
+│   │   ├── models/
+│   │   │   ├── user.py          # UserCreate, UserLogin schemas
+│   │   │   └── provider.py      # ProviderCreate schema
+│   │   ├── routers/
+│   │   │   └── auth.py          # Auth API endpoints
+│   │   ├── services/
+│   │   │   └── auth_service.py  # Business logic (register, login, OTP)
+│   │   └── utils/
+│   │       ├── security.py      # Password hashing + JWT tokens
+│   │       ├── email.py         # Email sending via Gmail SMTP
+│   │       └── validators.py    # Disposable email detection
+│   ├── .env                     # Environment variables (not in git)
+│   └── requirements.txt         # Python dependencies
+└── frontend/
+    └── src/
+        ├── api/
+        │   ├── axios.js         # Axios instance with JWT interceptor
+        │   └── auth.js          # Auth API functions
+        ├── context/
+        │   └── AuthContext.jsx  # Global auth state (token, user)
+        ├── hooks/
+        │   └── useAuth.js       # Custom hook to access AuthContext
+        ├── pages/
+        │   ├── Home.jsx         # Landing page
+        │   ├── Login.jsx        # Login page with OTP step
+        │   └── Register.jsx     # Register page with provider fields
+        ├── layouts/
+        │   └── AuthLayout.jsx   # Shared layout for auth pages
+        └── App.jsx              # Routes configuration
+
+
+----------------------------------------------------------------
+2. COMPLETED FEATURES
+----------------------------------------------------------------
+
+[BACKEND]
+
+✅ MongoDB Connection
+   - Async connection using Motor driver
+   - Connect on server startup, disconnect on shutdown (lifespan)
+   - Database name loaded from .env
+
+✅ User Registration (POST /api/auth/register)
+   - Accepts: first_name, last_name, email, password, role, phone, location
+   - Rejects disposable/temporary email addresses
+   - Blocks duplicate email registrations
+   - Hashes passwords with bcrypt before storing
+   - Validates provider-required fields: bio, service_categories, experience_years
+   - Auto-creates a provider_profile document for provider accounts
+   - Returns created user (without password)
+
+✅ User Login with Email OTP (POST /api/auth/login)
+   - Verifies email and password credentials
+   - On success: generates a 6-digit OTP, saves to otp_codes collection with 5-minute expiry
+   - Sends OTP to user's email via Gmail SMTP
+   - Does NOT return JWT token yet — waits for OTP verification
+
+✅ OTP Verification (POST /api/auth/verify-otp)
+   - Accepts: email + 6-digit code
+   - Checks code exists and has not expired
+   - Deletes code after use (one-time use only)
+   - Returns JWT access token + user data on success
+   - Returns appropriate errors for invalid or expired codes
+
+✅ JWT Token System
+   - Tokens signed with HS256 algorithm
+   - Configurable expiry via ACCESS_TOKEN_EXPIRE_MINUTES
+   - Tokens carry user ID as subject claim
+
+✅ Temp Mail Detection
+   - Uses disposable-email-domains package (offline, no API needed)
+   - Blocks thousands of known disposable domains (mailinator, guerrillamail, etc.)
+   - Checked at registration before anything else
+
+[FRONTEND]
+
+✅ Home Page
+   - Split layout matching original design
+   - Left panel: logo, navigation, headline, CTA buttons
+   - Right panel: service icons orbiting around CLIENT hub
+
+✅ Register Page
+   - White/blue theme consistent with Home page
+   - Role selection (Client / Provider)
+   - Provider-specific fields appear dynamically: bio, service categories (clickable pills),
+     experience years, hourly rate
+   - Error handling for temp mail and missing provider fields
+   - Connected to POST /api/auth/register
+
+✅ Login Page (Two-Step)
+   - Step 1: Email + password form
+   - Step 2: OTP input screen (shown after successful credential check)
+   - Displays the email the code was sent to
+   - "Go back" link if user didn't receive the code
+   - Connected to POST /api/auth/login and POST /api/auth/verify-otp
+
+✅ Auth State Management
+   - AuthContext stores user data and token globally
+   - JWT token saved to localStorage on successful OTP verification
+   - Token automatically attached to all future API requests (axios interceptor)
+   - useAuth() hook used across pages to access login/logout/user
+
+✅ Routing
+   - / → Home page
+   - /login → Login page
+   - /register → Register page
+   - Auth pages share a consistent AuthLayout
+
+
+----------------------------------------------------------------
+3. TECHNICAL DECISIONS
+----------------------------------------------------------------
+
+- FastAPI chosen for async support and automatic API documentation (/docs)
+- MongoDB chosen for flexible schema (different fields for clients vs providers)
+- Motor used instead of PyMongo for async database operations
+- bcrypt used for password hashing (industry standard)
+- JWT tokens used for stateless authentication (no server-side sessions)
+- Email OTP chosen over SMS OTP (free, no third-party service cost)
+- Gmail SMTP used for email delivery (free, 500 emails/day)
+- disposable-email-domains used offline to block temp emails (no API limits)
+- Axios interceptor auto-attaches token to every request (no manual work per call)
+- Provider profile stored in a separate collection for clean map queries
+
+
+----------------------------------------------------------------
+4. DATABASE COLLECTIONS
+----------------------------------------------------------------
+
+users             — all registered users (clients and providers)
+provider_profiles — extended profiles for provider accounts
+otp_codes         — temporary OTP records (expire after 5 minutes)
+
+
+----------------------------------------------------------------
+5. API ENDPOINTS (COMPLETED)
+----------------------------------------------------------------
+
+GET  /api/health          — health check
+POST /api/auth/register   — create a new account
+POST /api/auth/login      — verify credentials + send OTP email
+POST /api/auth/verify-otp — verify OTP code + return JWT token
+
+
+----------------------------------------------------------------
+6. NEXT STEPS
+----------------------------------------------------------------
+
+- Map endpoint: display available providers (GET /api/map/providers)
+- Provider availability toggle
+- Service request system (create, accept, reject, track status)
+- Real-time features: chat + notifications (WebSocket)
+- Live location tracking during active jobs
+- Ratings and reviews after job completion
+- Job history and filtering
+- Moderator dashboard
+
+
+----------------------------------------------------------------
+7. HOW TO RUN LOCALLY
+----------------------------------------------------------------
+
+BACKEND:
+  cd backend
+  venv\Scripts\activate         (Windows CMD)
+  uvicorn app.main:app --reload
+  API docs: http://localhost:8000/docs
+
+FRONTEND:
+  cd frontend
+  npm install
+  npm run dev
+  App: http://localhost:5173
+
+REQUIREMENTS:
+  - Python 3.11+
+  - Node.js 18+
+  - MongoDB running on localhost:27017
+  - Gmail App Password configured in .env
+
+================================================================
