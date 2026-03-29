@@ -1,10 +1,18 @@
-# provider_service.py — Provider Profile Business Logic
-#
-# Functions to build:
-#
-# 1. create_provider_profile(user_id, data) — Create provider entry in provider_profiles collection
-# 2. get_provider_profile(provider_id) — Fetch by provider profile _id
-# 3. get_provider_by_user_id(user_id) — Fetch by user_id
-# 4. update_provider_profile(user_id, data) — Update profile fields
-# 5. search_providers(filters) — Query providers with category/rating filters
-# 6. toggle_availability(user_id, is_available) — Set ready/not ready status
+from app.database import get_db
+from bson import ObjectId
+async def get_all_providers():
+    db = get_db()
+
+    providers = await db.provider_profiles.find(
+        {"is_available": True, "location": {"$exists": True}}
+    ).to_list(length=100)
+
+    for provider in providers:
+        provider["_id"] = str(provider["_id"])
+        provider["user_id"] = str(provider["user_id"])
+
+    return providers
+async def toggle_availble(user_id):
+    db=get_db()
+    user=db.users.find_one({"_id":ObjectId(user_id)})
+    

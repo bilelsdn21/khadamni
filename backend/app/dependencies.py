@@ -1,17 +1,23 @@
-# dependencies.py — Shared FastAPI Dependencies
-#
-# What to build here:
-#
-# 1. Import HTTPBearer from fastapi.security
-# 2. Import your verify_token from app.utils.security
-# 3. Import get_db from app.database
-# 4. Create a get_current_user dependency that:
-#      - Extracts the Bearer token from the Authorization header
-#      - Verifies the JWT token using verify_token()
-#      - Looks up the user in MongoDB by the "sub" claim
-#      - Returns the user dict, or raises 401 if invalid
-# 5. This dependency will be used in routers: Depends(get_current_user)
-#
-# Packages to learn:
-#   - fastapi (Depends, HTTPException, status)
-#   - fastapi.security (HTTPBearer, HTTPAuthorizationCredentials)
+from fastapi import Header, HTTPException
+from jose import jwt, JWTError
+from bson import ObjectId
+from app.config import settings
+from app.database import get_db
+
+async def get_current_user(authorization: str = Header(...)):
+    try:
+        token = authorization.replace("Bearer ", "")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    db = get_db()
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    user["_id"] = str(user["_id"])
+    return user

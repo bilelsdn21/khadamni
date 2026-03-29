@@ -4,6 +4,9 @@ import AuthLayout from './layouts/AuthLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
+import Map from './pages/Map';
+import ProtectedRoute from './components/ProtectedRoute';
+
 
 function App() {
   return (
@@ -12,11 +15,18 @@ function App() {
         <Routes>
           {/* Home page */}
           <Route path="/" element={<Home />} />
+          <Route path="/map" element={
+  <ProtectedRoute>
+    <Map />
+  </ProtectedRoute>
+} />
+
 
           {/* Auth pages */}
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            
           </Route>
 
           {/* Default redirect */}

@@ -44,6 +44,13 @@ async def register_user(user_data: dict):
             "rating_count": 0,
             "total_jobs": 0,
             "is_available": False,
+            "latitude": user_data.get("latitude"),
+            "longitude": user_data.get("longitude"),
+            "location": {
+            "type": "Point",
+            "coordinates": [user_data.get("longitude"), user_data.get("latitude")]
+                            }
+
         }
         await db.provider_profiles.insert_one(provider_profile)
 
@@ -69,7 +76,8 @@ async def login_user(email: str, password: str):
     # 3. Generate OTP code
     otp_code = str(secrets.randbelow(900000) + 100000)
 
-    # 4. Save OTP to database with 5 minute expiry
+    # 4. Delete any existing OTP for this email, then save new one
+    await db.otp_codes.delete_many({"email": email})
     await db.otp_codes.insert_one({
         "email": email,
         "code": otp_code,
@@ -92,7 +100,7 @@ async def verify_otp(email: str, code: str):
         return "invalid_otp"
 
     # 2. Check if expired
-    if datetime.now(timezone.utc) > otp_record["expires_at"]:
+    if datetime.now(timezone.utc) > otp_record["expires_at"].replace(tzinfo=timezone.utc):
         await db.otp_codes.delete_one({"_id": otp_record["_id"]})
         return "expired_otp"
 
@@ -101,11 +109,20 @@ async def verify_otp(email: str, code: str):
 
     # 4. Get user and return token
     user = await db.users.find_one({"email": email})
+
+    if user.get("role") == "provider":
+        profile = await db.provider_profiles.find_one({"user_id": user["_id"]})
+        if profile:
+            profile["_id"] = str(profile["_id"])
+            profile["user_id"] = str(profile["user_id"])
+            user["provider_profile"] = profile
+
     token = create_access_token({"sub": str(user["_id"])})
     user["_id"] = str(user["_id"])
     user.pop("password", None)
 
     return {"access_token": token, "user": user}
+
 
  
 

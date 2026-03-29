@@ -45,7 +45,7 @@ export default function Login() {
     try {
       const res = await verifyOtp({ email: form.email, code: otpCode });
       login(res.data.user, res.data.access_token, res.data.refresh_token);
-      navigate('/');
+      navigate('/map');
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid code. Please try again.');
     } finally {
@@ -54,26 +54,26 @@ export default function Login() {
   };
 
   const inputClass =
-    'w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition';
+    'w-full px-4 py-3 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] focus:border-transparent transition shadow-sm';
 
   // OTP Screen
   if (otpStep) {
     return (
       <>
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Check your email</h2>
-        <p className="text-gray-400 text-sm mb-6">
+        <h2 className="text-2xl font-bold text-white mb-1">Check your email</h2>
+        <p className="text-white/60 text-sm mb-6">
           We sent a 6-digit code to <span className="text-blue-500">{form.email}</span>
         </p>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
+          <div className="mb-4 p-3 rounded-[20px] bg-red-500/20 border border-red-500/30 text-red-300 text-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleOtpSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">
+            <label className="block text-sm font-medium text-white/80 mb-1">
               Verification Code
             </label>
             <input
@@ -85,15 +85,15 @@ export default function Login() {
 
           <button
             type="submit" disabled={loading}
-            className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition cursor-pointer"
+            className="w-full py-3.5 rounded-[20px] bg-gradient-to-r from-[#22C55E] to-[#4ADE80] hover:from-[#16A34A] hover:to-[#22C55E] disabled:opacity-50 text-white font-semibold shadow-lg shadow-[#22C55E]/30 transition-all duration-200 cursor-pointer"
           >
             {loading ? 'Verifying...' : 'Verify Code'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-400 mt-4">
+        <p className="text-center text-sm text-white/60 mt-4">
           Didn't receive the code?{' '}
-          <button onClick={() => setOtpStep(false)} className="text-blue-500 hover:text-blue-600 font-medium transition">
+          <button onClick={() => setOtpStep(false)} className="text-[#4ADE80] font-medium hover:underline">
             Go back
           </button>
         </p>
@@ -104,11 +104,11 @@ export default function Login() {
   // Login Screen
   return (
     <>
-      <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
-      <p className="text-gray-400 text-sm mb-6">Sign in to your account</p>
+      <h2 className="text-2xl font-bold text-white mb-1">Welcome back</h2>
+      <p className="text-white/60 text-sm mb-6">Sign in to your account</p>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
+        <div className="mb-4 p-3 rounded-[20px] bg-red-500/20 border border-red-500/30 text-red-300 text-sm">
           {error}
         </div>
       )}
@@ -116,7 +116,7 @@ export default function Login() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Email */}
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-1">
+          <label htmlFor="email" className="block text-sm font-medium text-white/80 mb-1">
             Email
           </label>
           <input
@@ -128,7 +128,7 @@ export default function Login() {
 
         {/* Password */}
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-600 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-white/80 mb-1">
             Password
           </label>
           <input
@@ -146,9 +146,9 @@ export default function Login() {
               onChange={(e) => setRemember(e.target.checked)}
               className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-500">Remember me</span>
+            <span className="text-sm text-white/60">Remember me</span>
           </label>
-          <Link to="/forgot-password" className="text-sm text-blue-500 hover:text-blue-600 transition">
+          <Link to="/forgot-password" className="text-sm text-[#4ADE80] hover:underline transition">
             Forgot password?
           </Link>
         </div>
@@ -156,16 +156,16 @@ export default function Login() {
         {/* Submit */}
         <button
           type="submit" disabled={loading}
-          className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition cursor-pointer"
+          className="w-full py-3.5 rounded-[20px] bg-gradient-to-r from-[#22C55E] to-[#4ADE80] hover:from-[#16A34A] hover:to-[#22C55E] disabled:opacity-50 text-white font-semibold shadow-lg shadow-[#22C55E]/30 transition-all duration-200 cursor-pointer"
         >
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
 
       {/* Register link */}
-      <p className="text-center text-sm text-gray-400 mt-6">
+      <p className="text-center text-sm text-white/60 mt-6">
         Don't have an account?{' '}
-        <Link to="/register" className="text-blue-500 hover:text-blue-600 font-medium transition">
+        <Link to="/register" className="text-[#4ADE80] font-medium hover:underline transition">
           Create one
         </Link>
       </p>

@@ -11,6 +11,8 @@ async def connect_db():
     client = AsyncIOMotorClient(settings.MONGODB_URL)
     db = client[settings.DATABASE_NAME]
     print(f"Connected to MongoDB: {settings.DATABASE_NAME}")
+    await db.provider_profiles.create_index([("location", "2dsphere")])
+    print("Geospatial index created")
 
 async def close_db():
     global client

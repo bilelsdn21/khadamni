@@ -3,7 +3,7 @@ KHADAMNI — DEVELOPMENT PROGRESS REPORT
 ================================================================
 Project : Khadamni (خدمني) — Real-Time Location-Based Service Marketplace
 Stack   : FastAPI + MongoDB + React 19 + Vite + Tailwind CSS v4
-Date    : 2026-03-22
+Date    : 2026-03-26
 ================================================================
 
 
@@ -20,9 +20,11 @@ khadamni/
 │   │   │   ├── user.py          # UserCreate, UserLogin schemas
 │   │   │   └── provider.py      # ProviderCreate schema
 │   │   ├── routers/
-│   │   │   └── auth.py          # Auth API endpoints
+│   │   │   ├── auth.py          # Auth API endpoints
+│   │   │   └── providers.py     # Provider discovery endpoints
 │   │   ├── services/
-│   │   │   └── auth_service.py  # Business logic (register, login, OTP)
+│   │   │   ├── auth_service.py  # Business logic (register, login, OTP)
+│   │   │   └── provider_service.py  # Provider query logic
 │   │   └── utils/
 │   │       ├── security.py      # Password hashing + JWT tokens
 │   │       ├── email.py         # Email sending via Gmail SMTP
@@ -38,10 +40,13 @@ khadamni/
         │   └── AuthContext.jsx  # Global auth state (token, user)
         ├── hooks/
         │   └── useAuth.js       # Custom hook to access AuthContext
+        ├── components/
+        │   └── ProtectedRoute.jsx   # Route protection component
         ├── pages/
         │   ├── Home.jsx         # Landing page
         │   ├── Login.jsx        # Login page with OTP step
-        │   └── Register.jsx     # Register page with provider fields
+        │   ├── Register.jsx     # Register page with provider fields
+        │   └── Map.jsx          # Interactive map page
         ├── layouts/
         │   └── AuthLayout.jsx   # Shared layout for auth pages
         └── App.jsx              # Routes configuration
@@ -122,7 +127,29 @@ khadamni/
    - / → Home page
    - /login → Login page
    - /register → Register page
+   - /map → Interactive map (protected — login required)
    - Auth pages share a consistent AuthLayout
+
+✅ Route Protection
+   - ProtectedRoute component redirects unauthenticated users to /login
+   - Auth state persists across page refreshes via localStorage
+   - /map is the main app destination after login
+
+✅ Interactive Map (/map)
+   - Built with Leaflet + react-leaflet
+   - Dark tile theme (Stadia Maps alidade_smooth_dark)
+   - Displays all available providers as map markers
+   - Shows user's current position as a distinct blue marker
+   - Location search using Nominatim API (free, no key required)
+   - Pending location preview (red marker) before confirming
+   - Manual location picker — click anywhere on map to set position
+   - Map flies smoothly to selected location
+   - Provider popups show: name, service categories, rating, experience
+
+✅ Provider Discovery (GET /api/providers/all_providers)
+   - Returns all provider_profiles where is_available=true and location exists
+   - Geospatial 2dsphere index on location field for future distance queries
+   - Provider location stored in both flat fields and GeoJSON format
 
 
 ----------------------------------------------------------------
@@ -146,7 +173,7 @@ khadamni/
 ----------------------------------------------------------------
 
 users             — all registered users (clients and providers)
-provider_profiles — extended profiles for provider accounts
+provider_profiles — extended profiles for provider accounts (with geospatial index)
 otp_codes         — temporary OTP records (expire after 5 minutes)
 
 
@@ -154,18 +181,18 @@ otp_codes         — temporary OTP records (expire after 5 minutes)
 5. API ENDPOINTS (COMPLETED)
 ----------------------------------------------------------------
 
-GET  /api/health          — health check
-POST /api/auth/register   — create a new account
-POST /api/auth/login      — verify credentials + send OTP email
-POST /api/auth/verify-otp — verify OTP code + return JWT token
+GET  /api/health                     — health check
+POST /api/auth/register              — create a new account
+POST /api/auth/login                 — verify credentials + send OTP email
+POST /api/auth/verify-otp            — verify OTP code + return JWT token
+GET  /api/providers/all_providers    — list all available providers with locations
 
 
 ----------------------------------------------------------------
 6. NEXT STEPS
 ----------------------------------------------------------------
 
-- Map endpoint: display available providers (GET /api/map/providers)
-- Provider availability toggle
+- Provider availability toggle (provider can go online/offline)
 - Service request system (create, accept, reject, track status)
 - Real-time features: chat + notifications (WebSocket)
 - Live location tracking during active jobs

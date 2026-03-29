@@ -1,37 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerUser } from '../api/auth';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
 
 const SERVICE_CATEGORIES = [
   'Plumbing', 'Electrical', 'Cleaning', 'Painting',
   'Tutoring', 'Delivery', 'IT Support', 'Carpentry',
   'Gardening', 'Moving', 'Cooking', 'Other',
 ];
-function LocationPicker({ onLocationSet }) {
-  useMapEvents({
-    click(e) {
-      onLocationSet([e.latlng.lat, e.latlng.lng]);
-    }
-  });
-  return null;
-}
-
-function FlyToLocation({ position }) {
-  const map = useMapEvents({});
-  useEffect(() => { map.flyTo(position, 13); }, [position]);
-  return null;
-}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -49,32 +24,10 @@ export default function Register() {
     service_categories: [],
     hourly_rate: '',
     experience_years: '',
-    latitude: null,
-    longitude: null
-
   });
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [flyTarget, setFlyTarget] = useState([33.8869, 9.5375]);
-
-  const handleLocationSearch = async (query) => {
-    setSearchQuery(query);
-    if (query.length < 3) return setSearchResults([]);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`
-      );
-      const data = await res.json();
-      setSearchResults(data);
-    } catch (e) {
-      console.error('Search failed', e);
-    }
-  };
-  
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -133,28 +86,21 @@ export default function Register() {
       if (form.role === 'provider') {
         payload.bio = form.bio;
         payload.service_categories = form.service_categories;
-        payload.experience_years = String(form.experience_years);
-        if (form.latitude) payload.latitude = form.latitude;
-        if (form.longitude) payload.longitude = form.longitude;
+        payload.experience_years = parseInt(form.experience_years);
         if (form.hourly_rate) payload.hourly_rate = parseFloat(form.hourly_rate);
       }
 
       await registerUser(payload);
       navigate('/login');
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        setError('Please fill in all required fields correctly.');
-      } else {
-        setError(detail || 'Registration failed. Please try again.');
-      }
+      setError(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const inputClass =
-    'w-full px-4 py-3 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] focus:border-transparent transition shadow-sm';
+    'w-full px-4 py-2.5 bg-[#0F172A] border border-white/10 rounded-[20px] text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] focus:border-transparent transition';
 
   return (
     <>
@@ -162,7 +108,7 @@ export default function Register() {
       <p className="text-white/60 text-sm mb-6">Join Khadamni today</p>
 
       {error && (
-        <div className="mb-4 p-3 rounded-[20px] bg-red-500/20 border border-red-500/30 text-red-300 text-sm">
+        <div className="bg-red-500/20 border border-red-500/30 text-red-300 text-sm rounded-[20px] px-4 py-3 mb-4">
           {error}
         </div>
       )}
@@ -177,7 +123,7 @@ export default function Register() {
             <input
               id="first_name" name="first_name" type="text" required
               value={form.first_name} onChange={handleChange}
-              placeholder="first_name" className={inputClass}
+              placeholder="Ahmed" className={inputClass}
             />
           </div>
           <div>
@@ -187,7 +133,7 @@ export default function Register() {
             <input
               id="last_name" name="last_name" type="text" required
               value={form.last_name} onChange={handleChange}
-              placeholder="last_name" className={inputClass}
+              placeholder="Benali" className={inputClass}
             />
           </div>
         </div>
@@ -207,26 +153,26 @@ export default function Register() {
         {/* Phone */}
         <div>
           <label htmlFor="phone" className="block text-sm font-medium text-white/80 mb-1">
-            Phone number <span className="text-gray-400">(optional)</span>
+            Phone number <span className="text-white/50">(optional)</span>
           </label>
           <input
             id="phone" name="phone" type="tel"
             value={form.phone} onChange={handleChange}
-            placeholder="+216...." className={inputClass}
+            placeholder="+213 555 123 456" className={inputClass}
           />
         </div>
 
         {/* Role selector */}
         <div>
-          <label className="block text-sm font-medium text-gray-600 mb-2">I want to</label>
+          <label className="block text-sm font-medium text-white/80 mb-2">I want to</label>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setForm({ ...form, role: 'client' })}
-              className={`py-3 px-4 rounded-[20px] border-2 text-sm font-medium transition cursor-pointer ${
+              className={`py-3 px-4 rounded-lg border-2 text-sm font-medium transition cursor-pointer ${
                 form.role === 'client'
-                  ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
-                  : 'border-white/10 bg-[#0F172A] text-white/60 hover:border-white/30'
+                  ? 'border-[#22C55E] bg-[#22C55E]/20 text-[#4ADE80]'
+                  : 'border-white/20 bg-[#0F172A] text-white/60 hover:border-white/40'
               }`}
             >
               Find services
@@ -235,10 +181,10 @@ export default function Register() {
             <button
               type="button"
               onClick={() => setForm({ ...form, role: 'provider' })}
-              className={`py-3 px-4 rounded-[20px] border-2 text-sm font-medium transition cursor-pointer ${
+              className={`py-3 px-4 rounded-lg border-2 text-sm font-medium transition cursor-pointer ${
                 form.role === 'provider'
-                  ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
-                  : 'border-white/10 bg-[#0F172A] text-white/60 hover:border-white/30'
+                  ? 'border-[#22C55E] bg-[#22C55E]/20 text-[#4ADE80]'
+                  : 'border-white/20 bg-[#0F172A] text-white/60 hover:border-white/40'
               }`}
             >
               Offer services
@@ -264,94 +210,10 @@ export default function Register() {
                 className={inputClass + ' resize-none'}
               />
             </div>
-            {/* Location picker */}
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-1">
-                Your location <span className="text-red-400">*</span>
-              </label>
-
-              {/* Collapsed placeholder */}
-              {!mapOpen && (
-                <button
-                  type="button"
-                  onClick={() => setMapOpen(true)}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-[20px] bg-[#1E293B] border border-white/10 text-white/60 hover:border-red-400/50 hover:text-white transition"
-                >
-                  <svg className="w-5 h-5 text-red-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                  </svg>
-                  {form.latitude
-                    ? <span className="text-[#4ADE80] font-medium">✓ Location selected</span>
-                    : <span>Click to set your location on the map</span>
-                  }
-                </button>
-              )}
-
-              {/* Expanded map */}
-              {mapOpen && (
-                <div className="rounded-[20px] overflow-hidden border border-white/10" style={{ position: 'relative' }}>
-                  {/* Search bar */}
-                  <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, width: '80%' }}>
-                    <input
-                      type="text"
-                      placeholder="Search location..."
-                      value={searchQuery}
-                      onChange={(e) => handleLocationSearch(e.target.value)}
-                      className="w-full px-4 py-2 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] shadow-lg"
-                      style={{ fontSize: '13px' }}
-                    />
-                    {searchResults.length > 0 && (
-                      <div style={{ backgroundColor: '#1E293B', borderRadius: '12px', marginTop: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        {searchResults.map((result) => (
-                          <div
-                            key={result.place_id}
-                            onClick={() => {
-                              const loc = [parseFloat(result.lat), parseFloat(result.lon)];
-                              setFlyTarget(loc);
-                              setForm({ ...form, latitude: loc[0], longitude: loc[1] });
-                              setSearchQuery(result.display_name.split(',').slice(0, 2).join(','));
-                              setSearchResults([]);
-                            }}
-                            style={{ padding: '8px 14px', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-                          >
-                            {result.display_name.split(',').slice(0, 2).join(',')}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <MapContainer center={flyTarget} zoom={6} style={{ height: '280px', width: '100%' }} zoomControl={false}>
-                    <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" />
-                    <FlyToLocation position={flyTarget} />
-                    <LocationPicker onLocationSet={(loc) => {
-                      setForm({ ...form, latitude: loc[0], longitude: loc[1] });
-                    }} />
-                    {form.latitude && <Marker position={[form.latitude, form.longitude]} />}
-                  </MapContainer>
-
-                  {/* Bottom bar */}
-                  <div style={{ backgroundColor: '#1E293B', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: form.latitude ? '#4ADE80' : 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
-                      {form.latitude ? `✓ ${form.latitude.toFixed(4)}, ${form.longitude.toFixed(4)}` : 'Click on the map to pin your location'}
-                    </span>
-                    {form.latitude && (
-                      <button
-                        type="button"
-                        onClick={() => setMapOpen(false)}
-                        style={{ backgroundColor: '#22C55E', color: 'white', border: 'none', borderRadius: '20px', padding: '6px 16px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}
-                      >
-                        Confirm
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Service categories */}
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-2">
+              <label className="block text-sm font-medium text-white/80 mb-2">
                 Service categories <span className="text-red-400">*</span>
               </label>
               <div className="flex flex-wrap gap-2">
@@ -362,7 +224,7 @@ export default function Register() {
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
                       form.service_categories.includes(cat)
                         ? 'bg-[#22C55E] text-white'
-                        : 'bg-[#0F172A] text-white/60 border border-white/10 hover:border-[#22C55E]/50 hover:text-[#4ADE80]'
+                        : 'bg-[#0F172A] text-white/70 border border-white/10 hover:border-[#22C55E]/50'
                     }`}
                   >
                     {cat}
@@ -385,7 +247,7 @@ export default function Register() {
               </div>
               <div>
                 <label htmlFor="hourly_rate" className="block text-sm font-medium text-white/80 mb-1">
-                  Hourly rate (DA) <span className="text-gray-400">(opt.)</span>
+                  Hourly rate (DA) <span className="text-white/50">(opt.)</span>
                 </label>
                 <input
                   id="hourly_rate" name="hourly_rate" type="number" min="0"
@@ -426,7 +288,7 @@ export default function Register() {
           <input
             type="checkbox" checked={agreed}
             onChange={(e) => setAgreed(e.target.checked)}
-            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+            className="w-4 h-4 mt-0.5 rounded border-white/30 text-[#22C55E] focus:ring-[#22C55E]"
           />
           <span className="text-sm text-white/60">
             I agree to the{' '}
@@ -439,7 +301,7 @@ export default function Register() {
         {/* Submit */}
         <button
           type="submit" disabled={loading}
-          className="w-full py-3.5 rounded-[20px] bg-gradient-to-r from-[#22C55E] to-[#4ADE80] hover:from-[#16A34A] hover:to-[#22C55E] disabled:opacity-50 text-white font-semibold shadow-lg shadow-[#22C55E]/30 transition-all duration-200 cursor-pointer"
+          className="w-full py-2.5 bg-gradient-to-r from-[#22C55E] to-[#4ADE80] hover:from-[#16A34A] hover:to-[#22C55E] disabled:opacity-50 text-white font-semibold rounded-[20px] transition cursor-pointer"
         >
           {loading ? 'Creating account...' : 'Create account'}
         </button>
@@ -448,7 +310,7 @@ export default function Register() {
       {/* Login link */}
       <p className="text-center text-sm text-white/60 mt-6">
         Already have an account?{' '}
-        <Link to="/login" className="text-[#4ADE80] font-medium hover:underline transition">
+        <Link to="/auth" className="text-[#4ADE80] hover:underline font-medium transition">
           Sign in
         </Link>
       </p>
