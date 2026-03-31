@@ -27,8 +27,16 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await loginUser(form);
-      setOtpStep(true); // show OTP input
+      const deviceToken = remember ? localStorage.getItem(`device_token_${form.email}`) : null;
+      const res = await loginUser({ ...form, remember_me: remember, device_token: deviceToken });
+
+      if (res.data.access_token) {
+        // trusted device — skip OTP
+        login(res.data.user, res.data.access_token, null);
+        navigate('/map');
+      } else {
+        setOtpStep(true);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed. Please try again.');
     } finally {
@@ -43,7 +51,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await verifyOtp({ email: form.email, code: otpCode });
+      const res = await verifyOtp({ email: form.email, code: otpCode, remember_me: remember });
+
+      // if remember_me — store the device token for future logins
+      if (remember && res.data.device_token) {
+        localStorage.setItem(`device_token_${form.email}`, res.data.device_token);
+      }
+
       login(res.data.user, res.data.access_token, res.data.refresh_token);
       navigate('/map');
     } catch (err) {

@@ -6,6 +6,7 @@ from app.database import connect_db, close_db
 from app.routers.auth import router as auth_router
 from app.routers.providers import router as provider_router
 from app.routers.requests import router as request_router
+from app.routers.ratings import router as ratings_router
 
 
 
@@ -36,3 +37,4 @@ async def health_check():
 app.include_router(auth_router)
 app.include_router(provider_router)
 app.include_router(request_router)
+app.include_router(ratings_router)

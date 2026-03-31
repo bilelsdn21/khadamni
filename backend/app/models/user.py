@@ -20,4 +20,6 @@ class UserCreate(BaseModel):
     avatar: Optional[str] = None
 class UserLogin(BaseModel):
     email: str
-    password: str 
+    password: str
+    remember_me: bool = False
+    device_token: str = None

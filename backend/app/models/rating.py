@@ -1,15 +1,19 @@
-# rating.py — Rating & Review Pydantic Schemas
-#
-# What to build here:
-#
-# 1. RatingCreate — submit a rating after job completion
-#      Fields: job_id, rated_user_id, score (1-5), comment (optional)
-#
-# 2. RatingResponse — data returned to frontend
-#      Fields: id, job_id, rater_id, rated_user_id, score, comment, created_at
-#
-# 3. RatingSummary — aggregated stats for a user
-#      Fields: user_id, average_score, total_ratings, score_distribution (dict)
-#
-# 4. RatingList — paginated list
-#      Fields: items (list), total, page, per_page
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+class RatingCreate(BaseModel):
+    job_id: str
+    score: int          # 1 to 5
+    comment: Optional[str] = None
+
+
+class RatingResponse(BaseModel):
+    id: str
+    job_id: str
+    rater_id: str
+    rated_id: str
+    score: int
+    comment: Optional[str]
+    created_at: datetime

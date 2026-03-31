@@ -27,10 +27,14 @@ async def register(user: UserCreate):
 
 @router.post("/login")
 async def login(user: UserLogin):
-    result = await login_user(user.email, user.password)
+    result = await login_user(user.email, user.password, user.remember_me, user.device_token)
 
     if result == "invalid_credentials":
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # trusted device — skip OTP
+    if isinstance(result, dict):
+        return result
 
     return {"message": "Verification code sent to your email"}
 
@@ -38,10 +42,11 @@ async def login(user: UserLogin):
 class OTPVerify(BaseModel):
     email: str
     code: str
+    remember_me: bool = False
 
 @router.post("/verify-otp")
 async def verify_otp_endpoint(data: OTPVerify):
-    result = await verify_otp(data.email, data.code)
+    result = await verify_otp(data.email, data.code, data.remember_me)
 
     if result == "invalid_otp":
         raise HTTPException(status_code=400, detail="Invalid verification code")

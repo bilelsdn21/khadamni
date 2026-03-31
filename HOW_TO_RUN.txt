@@ -113,7 +113,7 @@ TERMINAL 1 — Backend:
    cd backend
    venv\Scripts\activate
    venv\Scripts\uvicorn app.main:app --reload
-
+ 
 TERMINAL 2 — Frontend:
    cd frontend
    npm run dev

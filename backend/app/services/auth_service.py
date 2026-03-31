@@ -61,7 +61,7 @@ async def register_user(user_data: dict):
     return created_user
 
 
-async def login_user(email: str, password: str):
+async def login_user(email: str, password: str, remember_me: bool = False, device_token: str = None):
     db = get_db()
 
     # 1. Find user by email
@@ -72,11 +72,26 @@ async def login_user(email: str, password: str):
     # 2. Check password
     if not verify_password(password, user["password"]):
         return "invalid_credentials"
-    
-    # 3. Generate OTP code
+
+    # 3. If remember_me + valid device_token → skip OTP
+    if remember_me and device_token:
+        stored = await db.device_tokens.find_one({"email": email, "token": device_token})
+        if stored:
+            if user.get("role") == "provider":
+                profile = await db.provider_profiles.find_one({"user_id": user["_id"]})
+                if profile:
+                    profile["_id"] = str(profile["_id"])
+                    profile["user_id"] = str(profile["user_id"])
+                    user["provider_profile"] = profile
+            token = create_access_token({"sub": str(user["_id"])})
+            user["_id"] = str(user["_id"])
+            user.pop("password", None)
+            return {"access_token": token, "user": user}
+
+    # 4. Generate OTP code
     otp_code = str(secrets.randbelow(900000) + 100000)
 
-    # 4. Delete any existing OTP for this email, then save new one
+    # 5. Delete any existing OTP for this email, then save new one
     await db.otp_codes.delete_many({"email": email})
     await db.otp_codes.insert_one({
         "email": email,
@@ -84,14 +99,14 @@ async def login_user(email: str, password: str):
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5)
     })
 
-    # 5. Send OTP to user's email
+    # 6. Send OTP to user's email
     await send_otp_email(email, otp_code)
 
-    # 6. Don't return token yet — wait for OTP verification
+    # 7. Don't return token yet — wait for OTP verification
     return "otp_sent"
 
 
-async def verify_otp(email: str, code: str):
+async def verify_otp(email: str, code: str, remember_me: bool = False):
     db = get_db()
 
     # 1. Find the OTP record
@@ -121,7 +136,16 @@ async def verify_otp(email: str, code: str):
     user["_id"] = str(user["_id"])
     user.pop("password", None)
 
-    return {"access_token": token, "user": user}
+    response = {"access_token": token, "user": user}
+
+    # 5. If remember_me → generate device token and save it
+    if remember_me:
+        device_token = secrets.token_urlsafe(32)
+        await db.device_tokens.delete_many({"email": email})
+        await db.device_tokens.insert_one({"email": email, "token": device_token})
+        response["device_token"] = device_token
+
+    return response
 
 
  
