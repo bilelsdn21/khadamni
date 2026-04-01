@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+html {
+  scroll-behavior: smooth;
+}
+
 /* Khadamni – dark theme, neon green */
 body {
   background-color: #0F172A;
@@ -78,3 +82,33 @@ input:focus, button:focus-visible { outline: none; }
 
 .leaflet-control-zoom { display: none !important; }
 .leaflet-control-attribution { display: none !important; }
+
+/* Custom Leaflet Dark Popup Overrides */
+.leaflet-popup-content-wrapper {
+  background: #1E293B !important;
+  color: white !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 20px rgba(34, 197, 94, 0.15) !important;
+  padding: 0 !important;
+}
+.leaflet-popup-content {
+  margin: 0 !important;
+  line-height: normal !important;
+}
+.leaflet-popup-tip {
+  background: #1E293B !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  color: rgba(255, 255, 255, 0.5) !important;
+  padding: 8px 8px 0 0 !important;
+}
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: white !important;
+  background: transparent !important;
+}
+.leaflet-marker-icon:focus {
+  outline: none !important;
+}

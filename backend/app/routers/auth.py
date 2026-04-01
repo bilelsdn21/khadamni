@@ -1,28 +1,30 @@
-from fastapi import APIRouter, HTTPException
-from app.models.user import UserCreate, UserLogin
-from app.services.auth_service import register_user, login_user, verify_otp
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends
+from app.models.user import UserCreate, UserLogin, OTPVerify
+from app.dependencies import get_current_user
+from app.services.auth_service import register_user, login_user, verify_otp, remove_trusted_devices
 
+# Using models from app.models.user
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+@router.post("/remove-devices")
+async def revoke_devices(current_user: dict = Depends(get_current_user)):
+    await remove_trusted_devices(current_user["email"])
+    return {"message": "All trusted devices removed"}
 
 @router.post("/register")
 async def register(user: UserCreate):
     user_data = user.model_dump()
-
     created_user = await register_user(user_data)
 
     if created_user == "email_taken":
         raise HTTPException(status_code=400, detail="Email already registered")
     if created_user == "disposable_email":
         raise HTTPException(status_code=400, detail="Temporary emails are not allowed")
-
-
     if created_user == "missing_fields":
         raise HTTPException(status_code=400, detail="Providers must fill: bio, service_categories, experience_years")
 
     created_user["_id"] = str(created_user["_id"])
-
     return {"message": "User registered successfully", "user": created_user}
 
 @router.post("/login")
@@ -37,12 +39,6 @@ async def login(user: UserLogin):
         return result
 
     return {"message": "Verification code sent to your email"}
-
-
-class OTPVerify(BaseModel):
-    email: str
-    code: str
-    remember_me: bool = False
 
 @router.post("/verify-otp")
 async def verify_otp_endpoint(data: OTPVerify):

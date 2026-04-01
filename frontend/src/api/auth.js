@@ -10,3 +10,5 @@ export const refreshToken = (token) =>
 export const logoutUser = () => api.post('/auth/logout');
 
 export const verifyOtp = (data) => api.post('/auth/verify-otp', data);
+
+export const removeDevices = () => api.post('/auth/remove-devices');

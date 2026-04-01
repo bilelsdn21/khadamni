@@ -1,14 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginUser, verifyOtp } from '../api/auth';
 import useAuth from '../hooks/useAuth';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [remember, setRemember] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/map');
+    }
+  }, [isAuthenticated, navigate]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,6 +26,14 @@ export default function Login() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  const formatError = (err) => {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) return detail[0]?.msg || 'Validation error';
+    if (typeof detail === 'object' && detail !== null) return JSON.stringify(detail);
+    return 'An unexpected error occurred. Please try again.';
+  };
+
   // Step 1 — submit email + password
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,7 +41,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const deviceToken = remember ? localStorage.getItem(`device_token_${form.email}`) : null;
+      const deviceToken = localStorage.getItem('device_token');
       const res = await loginUser({ ...form, remember_me: remember, device_token: deviceToken });
 
       if (res.data.access_token) {
@@ -38,7 +52,7 @@ export default function Login() {
         setOtpStep(true);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }
@@ -53,15 +67,20 @@ export default function Login() {
     try {
       const res = await verifyOtp({ email: form.email, code: otpCode, remember_me: remember });
 
-      // if remember_me — store the device token for future logins
-      if (remember && res.data.device_token) {
-        localStorage.setItem(`device_token_${form.email}`, res.data.device_token);
+      if (res.data.device_token) {
+        localStorage.setItem('device_token', res.data.device_token);
+      }
+      
+      if (remember) {
+        localStorage.setItem('remember_me', 'true');
+      } else {
+        localStorage.removeItem('remember_me');
       }
 
       login(res.data.user, res.data.access_token, res.data.refresh_token);
       navigate('/map');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid code. Please try again.');
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from app.services.provider_service import get_all_providers, toggle_availability, update_location
+from app.services.provider_service import get_all_providers, toggle_availability, update_location, get_provider_by_id
 from app.dependencies import get_current_user
 
 
@@ -8,9 +8,17 @@ router = APIRouter(prefix="/api/providers", tags=["Providers"])
 
 
 @router.get("/all_providers")
-async def all_providers():
-    providers = await get_all_providers()
+async def all_providers(category: str = None, search: str = None, include_offline: bool = True):
+    providers = await get_all_providers(category, search, not include_offline)
     return providers
+
+
+@router.get("/{provider_id}")
+async def get_provider(provider_id: str):
+    provider = await get_provider_by_id(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
 
 
 class LocationUpdate(BaseModel):

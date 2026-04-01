@@ -11,6 +11,8 @@ async def get_my_profile(user_id: str):
 
     user["_id"] = str(user["_id"])
     user.pop("password", None)
+    # Member since date from ObjectId
+    user["member_since"] = ObjectId(user_id).generation_time.strftime("%B %Y")
 
     if user.get("role") == "provider":
         profile = await db.provider_profiles.find_one({"user_id": ObjectId(user_id)})
@@ -18,6 +20,22 @@ async def get_my_profile(user_id: str):
             profile["_id"] = str(profile["_id"])
             profile["user_id"] = str(profile["user_id"])
             user["provider_profile"] = profile
+        
+        # Aggregated stats for provider
+        ratings = await db.ratings.find({"provider_id": ObjectId(user_id)}).to_list(length=None)
+        user["rating_avg"] = sum(r["score"] for r in ratings) / len(ratings) if ratings else 0
+        user["total_reviews"] = len(ratings)
+        user["completed_jobs"] = await db.requests.count_documents({
+            "provider_id": ObjectId(user_id),
+            "status": "completed"
+        })
+    else:
+        # Aggregated stats for client
+        user["total_requests"] = await db.requests.count_documents({"client_id": ObjectId(user_id)})
+        user["active_requests"] = await db.requests.count_documents({
+            "client_id": ObjectId(user_id),
+            "status": {"$in": ["pending", "accepted"]}
+        })
 
     return user
 
@@ -31,10 +49,10 @@ async def update_my_profile(user_id: str, role: str, data: dict):
         return "no_changes"
 
     # Fields that belong to the users collection
-    user_fields = {"first_name", "last_name", "phone", "latitude", "longitude"}
+    user_fields = {"first_name", "last_name", "phone", "latitude", "longitude", "avatar"}
 
     # Fields that belong to the provider_profiles collection
-    provider_fields = {"bio", "service_categories", "hourly_rate", "experience_years"}
+    provider_fields = {"bio", "service_categories", "hourly_rate", "experience_years", "is_available"}
 
     user_update = {k: v for k, v in data.items() if k in user_fields}
     provider_update = {k: v for k, v in data.items() if k in provider_fields}

@@ -10,6 +10,7 @@ from app.routers.requests import router as request_router
 from app.routers.ratings import router as ratings_router
 from app.routers.profile import router as profile_router
 from app.routers.portfolio import router as portfolio_router
+from app.routers.chat import router as chat_router
 
 
 
@@ -43,4 +44,5 @@ app.include_router(request_router)
 app.include_router(ratings_router)
 app.include_router(profile_router)
 app.include_router(portfolio_router)
+app.include_router(chat_router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

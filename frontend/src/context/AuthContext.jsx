@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    localStorage.removeItem('remember_me');
     dispatch({ type: 'LOGOUT' });
   };
 

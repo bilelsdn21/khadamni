@@ -1,34 +1,86 @@
-import { useEffect, useState } from 'react';
-import { getMyRequests, acceptRequest, rejectRequest } from '../api/request';
+import { useEffect, useState, useRef } from 'react';
+import { getMyRequests, acceptRequest, rejectRequest, getRequestById } from '../api/request';
 import useAuth from '../hooks/useAuth';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const STATUS_COLORS = {
   pending:     { bg: 'bg-yellow-500/10 border border-yellow-500/30', text: 'text-yellow-400', label: 'Pending' },
   in_progress: { bg: 'bg-[#22C55E]/10 border border-[#22C55E]/30',  text: 'text-[#4ADE80]',  label: 'In Progress' },
   rejected:    { bg: 'bg-red-500/10 border border-red-500/30',       text: 'text-red-400',    label: 'Rejected' },
   completed:   { bg: 'bg-blue-500/10 border border-blue-500/30',     text: 'text-blue-400',   label: 'Completed' },
+  cancelled:   { bg: 'bg-white/5 border border-white/10',            text: 'text-white/40',   label: 'Cancelled' },
 };
 
 export default function Requests() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const pollingRef = useRef(null);
+
+  const fetchRequests = async () => {
+    try {
+      const res = await getMyRequests();
+      setRequests(res.data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch requests:', err);
+      setError('Failed to load requests. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    getMyRequests()
-      .then(res => setRequests(res.data))
-      .finally(() => setLoading(false));
+    fetchRequests();
   }, []);
 
+  // Polling: clients poll every 5 seconds for pending requests becoming accepted
+  useEffect(() => {
+    if (user?.role !== 'client') return;
+
+    pollingRef.current = setInterval(async () => {
+      const pendingRequests = requests.filter(r => r.status === 'pending');
+      if (pendingRequests.length === 0) return;
+
+      for (const req of pendingRequests) {
+        try {
+          const res = await getRequestById(req._id);
+          const updated = res.data;
+          if (updated.status === 'in_progress') {
+            clearInterval(pollingRef.current);
+            navigate(`/chat/${req._id}`);
+            return;
+          }
+        } catch (err) {
+          console.error('Polling error for request', req._id, err);
+        }
+      }
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [requests, user?.role, navigate]);
+
   const handleAccept = async (id) => {
-    await acceptRequest(id);
-    setRequests(requests.map(r => r._id === id ? { ...r, status: 'in_progress' } : r));
+    try {
+      await acceptRequest(id);
+      setRequests(prev => prev.map(r => r._id === id ? { ...r, status: 'in_progress' } : r));
+      navigate(`/chat/${id}`);
+    } catch (err) {
+      console.error('Failed to accept request:', err);
+    }
   };
 
   const handleReject = async (id) => {
-    await rejectRequest(id);
-    setRequests(requests.map(r => r._id === id ? { ...r, status: 'rejected' } : r));
+    try {
+      await rejectRequest(id);
+      setRequests(prev => prev.map(r => r._id === id ? { ...r, status: 'rejected' } : r));
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+    }
   };
 
   return (
@@ -55,13 +107,20 @@ export default function Requests() {
           </Link>
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="mb-4 px-4 py-3 rounded-[12px] bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
         {/* Loading */}
         {loading && (
           <p className="text-white/50 text-center mt-20">Loading...</p>
         )}
 
         {/* Empty state */}
-        {!loading && requests.length === 0 && (
+        {!loading && !error && requests.length === 0 && (
           <div className="text-center py-16 bg-[#1E293B] rounded-[20px] border border-white/10">
             <p className="text-4xl mb-3">📭</p>
             <p className="text-white font-semibold text-base">No requests yet</p>
@@ -116,6 +175,24 @@ export default function Requests() {
                   >
                     Reject
                   </button>
+                </div>
+              )}
+
+              {/* Chat button — for in_progress requests */}
+              {r.status === 'in_progress' && (
+                <Link
+                  to={`/chat/${r._id}`}
+                  className="w-full py-2.5 rounded-[20px] bg-[#22C55E]/10 border border-[#22C55E]/40 text-[#4ADE80] font-semibold text-sm hover:bg-[#22C55E]/20 transition-all duration-200 text-center block"
+                >
+                  Open Chat
+                </Link>
+              )}
+
+              {/* Pending indicator for clients */}
+              {user?.role === 'client' && r.status === 'pending' && (
+                <div className="flex items-center gap-2 text-yellow-400/70 text-xs">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                  Waiting for provider response...
                 </div>
               )}
             </div>

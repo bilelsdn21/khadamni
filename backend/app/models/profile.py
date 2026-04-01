@@ -8,6 +8,7 @@ class ClientProfileUpdate(BaseModel):
     phone: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    avatar: Optional[str] = None
 
 
 class ProviderProfileUpdate(BaseModel):
@@ -20,3 +21,5 @@ class ProviderProfileUpdate(BaseModel):
     experience_years: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    avatar: Optional[str] = None
+    is_available: Optional[bool] = None

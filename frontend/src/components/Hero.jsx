@@ -50,12 +50,6 @@ export default function Hero() {
             >
               Sign Up
             </Link>
-            <Link
-              to="/map"
-              className="inline-flex items-center justify-center min-w-[130px] px-8 py-4 rounded-[20px] bg-gradient-to-br from-white/95 to-white/85 text-[#22C55E] font-semibold shadow-lg shadow-white/20 hover:shadow-white/40 hover:-translate-y-0.5 transition-all duration-200 ring-1 ring-white/30"
-            >
-              View Map
-            </Link>
           </div>
         </main>
 

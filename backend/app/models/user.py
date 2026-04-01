@@ -22,4 +22,9 @@ class UserLogin(BaseModel):
     email: str
     password: str
     remember_me: bool = False
-    device_token: str = None
+    device_token: Optional[str] = None
+
+class OTPVerify(BaseModel):
+    email: str
+    code: str
+    remember_me: bool = False
