@@ -20,6 +20,12 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
+    // 422 with no token = missing Authorization header = treat same as 401
+    if (error.response?.status === 422 && !localStorage.getItem('access_token')) {
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !original._retry && !original.url.includes('/auth/')) {
       original._retry = true;
 

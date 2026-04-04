@@ -23,3 +23,4 @@ class ProviderProfileUpdate(BaseModel):
     longitude: Optional[float] = None
     avatar: Optional[str] = None
     is_available: Optional[bool] = None
+    job_type: Optional[str] = None

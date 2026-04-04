@@ -11,6 +11,7 @@ from app.routers.ratings import router as ratings_router
 from app.routers.profile import router as profile_router
 from app.routers.portfolio import router as portfolio_router
 from app.routers.chat import router as chat_router
+from app.routers.ai import router as ai_router
 
 
 
@@ -29,7 +30,7 @@ app = FastAPI(title="Khadamni API", lifespan=lifespan)
 # 5. Add CORS middleware allowing frontend origin (http://localhost:5173)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,4 +46,5 @@ app.include_router(ratings_router)
 app.include_router(profile_router)
 app.include_router(portfolio_router)
 app.include_router(chat_router)
+app.include_router(ai_router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

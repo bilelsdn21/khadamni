@@ -2,12 +2,15 @@ import { useEffect, useState, useRef } from 'react';
 import { getMyRequests, acceptRequest, rejectRequest, getRequestById } from '../api/request';
 import useAuth from '../hooks/useAuth';
 import { Link, useNavigate } from 'react-router-dom';
+import ThemeToggle from '../components/ThemeToggle';
+import api from '../api/axios';
 
 const STATUS_COLORS = {
   pending:     { bg: 'bg-yellow-500/10 border border-yellow-500/30', text: 'text-yellow-400', label: 'Pending' },
   in_progress: { bg: 'bg-[#22C55E]/10 border border-[#22C55E]/30',  text: 'text-[#4ADE80]',  label: 'In Progress' },
+  confirmed:   { bg: 'bg-blue-500/10 border border-blue-500/30',     text: 'text-blue-400',   label: 'Confirmed' },
+  completed:   { bg: 'bg-purple-500/10 border border-purple-500/30', text: 'text-purple-400', label: 'Completed' },
   rejected:    { bg: 'bg-red-500/10 border border-red-500/30',       text: 'text-red-400',    label: 'Rejected' },
-  completed:   { bg: 'bg-blue-500/10 border border-blue-500/30',     text: 'text-blue-400',   label: 'Completed' },
   cancelled:   { bg: 'bg-white/5 border border-white/10',            text: 'text-white/40',   label: 'Cancelled' },
 };
 
@@ -18,6 +21,11 @@ export default function Requests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const pollingRef = useRef(null);
+  // Report modal
+  const [reportModal, setReportModal] = useState(null); // request_id | null
+  const [reportReason, setReportReason] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportResult, setReportResult] = useState(null);
 
   const fetchRequests = async () => {
     try {
@@ -83,6 +91,27 @@ export default function Requests() {
     }
   };
 
+  const handleReport = async () => {
+    if (!reportReason.trim() || !reportModal) return;
+    setReportLoading(true);
+    try {
+      const res = await api.post('/ai/report', { request_id: reportModal, reason: reportReason });
+      setReportResult(res.data);
+    } catch (err) {
+      console.error('Report failed:', err);
+      setReportResult({ error: 'AI unavailable. Your report has been recorded.' });
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const RECOMMENDATION_COLORS = {
+    client_favored:       { bg: 'bg-blue-500/10 border-blue-500/30',    text: 'text-blue-400',   label: 'Client favored' },
+    provider_favored:     { bg: 'bg-[#22C55E]/10 border-[#22C55E]/30',  text: 'text-[#4ADE80]',  label: 'Provider favored' },
+    neutral:              { bg: 'bg-yellow-500/10 border-yellow-500/30', text: 'text-yellow-400', label: 'Neutral' },
+    insufficient_evidence:{ bg: 'bg-white/5 border-white/10',           text: 'text-white/40',   label: 'Insufficient evidence' },
+  };
+
   return (
     <div className="min-h-screen bg-[#0F172A] px-6 py-8">
       <div className="max-w-2xl mx-auto">
@@ -99,12 +128,15 @@ export default function Requests() {
                 : 'Services you have requested'}
             </p>
           </div>
-          <Link
-            to="/map"
-            className="px-4 py-2.5 rounded-[20px] bg-[#1E293B] border border-white/10 text-[#4ADE80] text-sm font-semibold hover:border-[#22C55E]/50 transition-all duration-200"
-          >
-            ← Back to Map
-          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              to="/map"
+              className="px-4 py-2.5 rounded-[20px] bg-[#1E293B] border border-white/10 text-[#4ADE80] text-sm font-semibold hover:border-[#22C55E]/50 transition-all duration-200"
+            >
+              ← Back to Map
+            </Link>
+          </div>
         </div>
 
         {/* Error */}
@@ -178,14 +210,42 @@ export default function Requests() {
                 </div>
               )}
 
-              {/* Chat button — for in_progress requests */}
-              {r.status === 'in_progress' && (
-                <Link
-                  to={`/chat/${r._id}`}
-                  className="w-full py-2.5 rounded-[20px] bg-[#22C55E]/10 border border-[#22C55E]/40 text-[#4ADE80] font-semibold text-sm hover:bg-[#22C55E]/20 transition-all duration-200 text-center block"
-                >
-                  Open Chat
-                </Link>
+              {/* Chat + Track buttons — for in_progress and confirmed requests */}
+              {(r.status === 'in_progress' || r.status === 'confirmed') && (
+                <div className="flex gap-2">
+                  <Link
+                    to={`/chat/${r._id}`}
+                    className="flex-1 py-2.5 rounded-[20px] bg-[#22C55E]/10 border border-[#22C55E]/40 text-[#4ADE80] font-semibold text-sm hover:bg-[#22C55E]/20 transition-all duration-200 text-center"
+                  >
+                    Open Chat
+                  </Link>
+                  {r.job_type !== 'remote' && (
+                    <Link
+                      to={`/tracking/${r._id}`}
+                      className="flex-1 py-2.5 rounded-[20px] bg-blue-500/10 border border-blue-500/30 text-blue-400 font-semibold text-sm hover:bg-blue-500/20 transition-all duration-200 text-center"
+                    >
+                      Track
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {/* Completed — View & Rate + Report (future moderation) */}
+              {r.status === 'completed' && (
+                <div className="flex gap-2">
+                  <Link
+                    to={`/chat/${r._id}`}
+                    className="flex-1 py-2.5 rounded-[20px] bg-purple-500/10 border border-purple-500/30 text-purple-400 font-semibold text-sm hover:bg-purple-500/20 transition-all duration-200 text-center"
+                  >
+                    View & Rate
+                  </Link>
+                  <button
+                    onClick={() => { setReportModal(r._id); setReportReason(''); setReportResult(null); }}
+                    className="flex-1 py-2.5 rounded-[20px] bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-sm hover:bg-red-500/20 transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Report
+                  </button>
+                </div>
               )}
 
               {/* Pending indicator for clients */}
@@ -199,6 +259,75 @@ export default function Requests() {
           );
         })}
       </div>
+
+      {/* Report Modal */}
+      {reportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
+          <div className="bg-[#1E293B] rounded-[24px] border border-white/10 p-6 w-full max-w-sm shadow-2xl">
+
+            {!reportResult ? (
+              <>
+                <h3 className="text-white font-bold text-base mb-1">Report this job</h3>
+                <p className="text-white/40 text-xs mb-4">Describe the issue — AI will analyze the chat history and generate a dispute summary for our team.</p>
+                <textarea
+                  value={reportReason}
+                  onChange={e => setReportReason(e.target.value)}
+                  placeholder="Describe the issue..."
+                  rows={4}
+                  className="w-full bg-[#0F172A] border border-white/10 rounded-[12px] px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-[#22C55E]/50 resize-none mb-4"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setReportModal(null)}
+                    className="flex-1 py-2.5 rounded-[20px] bg-white/5 border border-white/10 text-white/70 font-semibold text-sm hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReport}
+                    disabled={reportLoading || !reportReason.trim()}
+                    className="flex-1 py-2.5 rounded-[20px] bg-[#22C55E] text-white font-semibold text-sm hover:bg-[#22C55E]/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {reportLoading ? (
+                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Analyzing...</>
+                    ) : (
+                      'Analyze with AI →'
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {reportResult.error ? (
+                  <p className="text-white/60 text-sm text-center py-4">{reportResult.error}</p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-[#4ADE80] font-semibold text-sm">✓ Report submitted & analyzed</p>
+                    <p className="text-white/70 text-sm leading-relaxed">{reportResult.summary}</p>
+                    {reportResult.recommendation && (() => {
+                      const chip = RECOMMENDATION_COLORS[reportResult.recommendation] || RECOMMENDATION_COLORS.neutral;
+                      return (
+                        <div className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-semibold ${chip.bg} ${chip.text}`}>
+                          {chip.label}
+                        </div>
+                      );
+                    })()}
+                    {reportResult.suggested_action && (
+                      <p className="text-white/40 text-xs italic">{reportResult.suggested_action}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={() => setReportModal(null)}
+                  className="w-full mt-4 py-2.5 rounded-[20px] bg-white/5 border border-white/10 text-white font-semibold text-sm hover:bg-white/10 transition-all"
+                >
+                  Close
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

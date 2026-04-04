@@ -24,6 +24,7 @@ async def create_request(client_id: str, provider_profile_id: str, description: 
         "provider_name": provider["full_name"],
         "description": description,
         "status": "pending",
+        "job_type": provider.get("job_type", "in_place"),
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -51,6 +52,19 @@ async def get_my_requests(user_id: str, role: str, status: str = None):
         r["provider_id"] = str(r["provider_id"])
         if r.get("provider_profile_id"):
             r["provider_profile_id"] = str(r["provider_profile_id"])
+        # Attach unread message count for this request's chat room
+        try:
+            room = await db.chat_rooms.find_one({"request_id": ObjectId(r["_id"])})
+        except Exception:
+            room = None
+        if room:
+            r["unread_count"] = await db.chat_messages.count_documents({
+                "room_id": room["_id"],
+                "sender_id": {"$ne": ObjectId(user_id)},
+                "is_read": False,
+            })
+        else:
+            r["unread_count"] = 0
 
     return requests
 
@@ -119,7 +133,7 @@ async def complete_request(request_id: str, provider_user_id: str):
         return "not_found"
     if str(request["provider_id"]) != provider_user_id:
         return "forbidden"
-    if request["status"] != "in_progress":
+    if request["status"] not in ("in_progress", "confirmed"):
         return "invalid_status"
 
     await db.service_requests.update_one(

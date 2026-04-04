@@ -18,11 +18,15 @@ class UserCreate(BaseModel):
     hourly_rate: Optional[float] = None
     experience_years: Optional[str] = None
     avatar: Optional[str] = None
+    job_type: Optional[str] = None
+
+
 class UserLogin(BaseModel):
     email: str
     password: str
     remember_me: bool = False
     device_token: Optional[str] = None
+
 
 class OTPVerify(BaseModel):
     email: str

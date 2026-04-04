@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npm create:*)",
       "Bash(npm install:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(xargs basename:*)",
+      "Bash(ls -la c:/Users/user/Desktop/khd/frontend/tailwind.config.*)",
+      "Bash(python -m uvicorn --version)",
+      "Bash(python -m uvicorn app.main:app --reload)",
+      "Bash(python -c ':*)",
+      "Bash(pip install:*)"
     ]
   }
 }

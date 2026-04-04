@@ -3,6 +3,16 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 
+def _serialize_msg(msg: dict) -> dict:
+    """Convert ObjectIds and datetime to JSON-safe strings."""
+    msg["_id"] = str(msg["_id"])
+    msg["room_id"] = str(msg["room_id"])
+    msg["sender_id"] = str(msg["sender_id"])
+    if isinstance(msg.get("timestamp"), datetime):
+        msg["timestamp"] = msg["timestamp"].isoformat()
+    return msg
+
+
 async def get_or_create_chat_room(request_id: str, user_id: str):
     """Get or create a chat room for a request. Only accessible by client or provider."""
     db = get_db()
@@ -61,6 +71,12 @@ async def get_or_create_chat_room(request_id: str, user_id: str):
     provider_profile = await db.provider_profiles.find_one({"user_id": ObjectId(room["provider_id"])})
     service_category = provider_profile.get("category", "Service") if provider_profile else "Service"
 
+    unread_count = await db.chat_messages.count_documents({
+        "room_id": ObjectId(room["_id"]),
+        "sender_id": {"$ne": ObjectId(user_id)},
+        "is_read": False,
+    })
+
     return {
         "room": room,
         "messages": messages,
@@ -68,6 +84,7 @@ async def get_or_create_chat_room(request_id: str, user_id: str):
         "other_party_id": other_party_id,
         "service_category": service_category,
         "request_status": request["status"],
+        "unread_count": unread_count,
     }
 
 
@@ -144,11 +161,7 @@ async def send_offer(request_id: str, provider_id: str, amount: float, note: str
     result = await db.chat_messages.insert_one(message_doc)
     message = await db.chat_messages.find_one({"_id": result.inserted_id})
 
-    message["_id"] = str(message["_id"])
-    message["room_id"] = str(message["room_id"])
-    message["sender_id"] = str(message["sender_id"])
-
-    return message
+    return _serialize_msg(message)
 
 
 async def update_offer_status(request_id: str, message_id: str, client_id: str, status: str):
@@ -185,11 +198,7 @@ async def update_offer_status(request_id: str, message_id: str, client_id: str, 
         )
 
     updated_message = await db.chat_messages.find_one({"_id": ObjectId(message_id)})
-    updated_message["_id"] = str(updated_message["_id"])
-    updated_message["room_id"] = str(updated_message["room_id"])
-    updated_message["sender_id"] = str(updated_message["sender_id"])
-
-    return updated_message
+    return _serialize_msg(updated_message)
 
 
 async def confirm_agreement(request_id: str, user_id: str):
@@ -316,11 +325,7 @@ async def save_message(room_id: str, sender_id: str, message: str, message_type:
     result = await db.chat_messages.insert_one(message_doc)
     saved_message = await db.chat_messages.find_one({"_id": result.inserted_id})
 
-    saved_message["_id"] = str(saved_message["_id"])
-    saved_message["room_id"] = str(saved_message["room_id"])
-    saved_message["sender_id"] = str(saved_message["sender_id"])
-
-    return saved_message
+    return _serialize_msg(saved_message)
 
 
 async def mark_messages_as_read(room_id: str, user_id: str):

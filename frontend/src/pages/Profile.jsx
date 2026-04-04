@@ -1,15 +1,44 @@
-import { useContext, useState, useEffect } from 'react';
+import { useContext, useState, useEffect, useRef } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import AuthContext from '../context/AuthContext';
+import api from '../api/axios';
 import { removeDevices } from '../api/auth';
-import { getProfile, updateProfile, getPublicProfileById } from '../api/profile';
-import { getPortfolio } from '../api/portfolio';
+import { getProfile, updateProfile, getPublicProfileById, uploadAvatar, changePassword } from '../api/profile';
+import { getPortfolio, addPortfolioItem, deletePortfolioItem } from '../api/portfolio';
 import { getUserRatings } from '../api/ratings';
 import SideDrawer from '../components/SideDrawer';
+import ThemeToggle from '../components/ThemeToggle';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+const SERVICE_CATEGORIES = [
+  'Plumbing', 'Electrical', 'Cleaning', 'Painting',
+  'Tutoring', 'Delivery', 'IT Support', 'Carpentry',
+  'Gardening', 'Moving', 'Cooking', 'Other',
+];
+
+function LocationPicker({ onLocationSet }) {
+  useMapEvents({ click(e) { onLocationSet([e.latlng.lat, e.latlng.lng]); } });
+  return null;
+}
+
+function FlyToLocation({ position }) {
+  const map = useMapEvents({});
+  useEffect(() => { map.flyTo(position, 13); }, [position]);
+  return null;
+}
 
 export default function Profile() {
-  const { id } = useParams(); // For public view
-  const { user } = useContext(AuthContext);
+  const { id } = useParams();
+  const { user, login } = useContext(AuthContext);
   const [profileData, setProfileData] = useState(null);
   const [portfolio, setPortfolio] = useState([]);
   const [ratings, setRatings] = useState([]);
@@ -18,11 +47,36 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // Edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [editMapOpen, setEditMapOpen] = useState(false);
+  const [editFlyTarget, setEditFlyTarget] = useState([33.8869, 9.5375]);
+  const [editLocationSearch, setEditLocationSearch] = useState('');
+  const [editLocationResults, setEditLocationResults] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  // Portfolio upload
+  const [uploadDesc, setUploadDesc] = useState('');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+
+  // Avatar upload
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef(null);
+
+  // Password change
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+
   const isOwnProfile = !id || id === user?._id;
 
-  useEffect(() => {
-    fetchData();
-  }, [id, user]);
+  useEffect(() => { fetchData(); }, [id, user]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -35,17 +89,18 @@ export default function Profile() {
         const res = await getPublicProfileById(id);
         data = res.data;
       }
-      
       setProfileData(data);
 
-      // Fetch additional data for providers (either own or public)
+      const targetUserId = isOwnProfile ? user._id : (data._id || data.user_id || id);
       if (data.role === 'provider' || data.provider_profile) {
-        const targetUserId = isOwnProfile ? user._id : (data.user_id || id);
         const [portfolioRes, ratingsRes] = await Promise.all([
           getPortfolio(targetUserId),
-          getUserRatings(targetUserId)
+          getUserRatings(targetUserId),
         ]);
         setPortfolio(portfolioRes.data);
+        setRatings(ratingsRes.data);
+      } else {
+        const ratingsRes = await getUserRatings(targetUserId);
         setRatings(ratingsRes.data);
       }
     } catch (err) {
@@ -55,22 +110,18 @@ export default function Profile() {
     }
   };
 
-  if (!user && isOwnProfile) {
-    return <Navigate to="/login" replace />;
-  }
+  if (!user && isOwnProfile) return <Navigate to="/login" replace />;
 
   const handleRemoveDevices = async () => {
-    if (!window.confirm('Are you sure you want to remove all trusted devices? You will need to verify via OTP on your next login.')) return;
-    
+    if (!window.confirm('Remove all trusted devices? You will need OTP on next login.')) return;
     setRevoking(true);
     try {
       await removeDevices();
       localStorage.removeItem('device_token');
-      setMessage('All trusted devices removed successfully.');
+      setMessage('All trusted devices removed.');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error(err);
-      alert('Failed to remove devices. Please try again.');
     } finally {
       setRevoking(false);
     }
@@ -83,20 +134,142 @@ export default function Profile() {
       await updateProfile({ is_available: newStatus });
       setProfileData({
         ...profileData,
-        provider_profile: { ...profileData.provider_profile, is_available: newStatus }
+        provider_profile: { ...profileData.provider_profile, is_available: newStatus },
       });
+    } catch (err) { console.error(err); }
+  };
+
+  const enterEditMode = () => {
+    const pp = profileData?.provider_profile || {};
+    setEditForm({
+      first_name: profileData?.first_name || '',
+      last_name: profileData?.last_name || '',
+      phone: profileData?.phone || '',
+      bio: pp.bio || profileData?.bio || '',
+      service_categories: pp.service_categories || profileData?.service_categories || [],
+      hourly_rate: pp.hourly_rate || profileData?.hourly_rate || '',
+      experience_years: pp.experience_years || profileData?.experience_years || '',
+      latitude: pp.latitude || profileData?.latitude || null,
+      longitude: pp.longitude || profileData?.longitude || null,
+      job_type: pp.job_type || 'in_place',
+    });
+    const lat = pp.latitude || profileData?.latitude;
+    const lng = pp.longitude || profileData?.longitude;
+    if (lat && lng) setEditFlyTarget([lat, lng]);
+    setSaveError('');
+    setEditMode(true);
+  };
+
+  const handleEditLocationSearch = async (val) => {
+    setEditLocationSearch(val);
+    if (val.length < 2) { setEditLocationResults([]); return; }
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5`);
+      const data = await res.json();
+      setEditLocationResults(data);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const payload = {
+        first_name: editForm.first_name || undefined,
+        last_name: editForm.last_name || undefined,
+        phone: editForm.phone || undefined,
+        bio: editForm.bio || undefined,
+        service_categories: editForm.service_categories?.length ? editForm.service_categories : undefined,
+        hourly_rate: editForm.hourly_rate ? parseFloat(editForm.hourly_rate) : undefined,
+        experience_years: editForm.experience_years ? String(editForm.experience_years) : undefined,
+        job_type: editForm.job_type || undefined,
+        latitude: editForm.latitude || undefined,
+        longitude: editForm.longitude || undefined,
+      };
+      await updateProfile(payload);
+      await fetchData();
+      // Refresh auth context so Map.jsx picks up new job_type immediately
+      const meRes = await api.get('/auth/me');
+      const freshUser = meRes.data;
+      localStorage.setItem('user', JSON.stringify(freshUser));
+      login(freshUser, localStorage.getItem('access_token'), localStorage.getItem('refresh_token'));
+      setEditMode(false);
+      setEditMapOpen(false);
+    } catch (err) {
+      setSaveError(err.response?.data?.detail || 'Failed to save. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePortfolioUpload = async (e) => {
+    e.preventDefault();
+    if (!uploadFile || !uploadDesc.trim()) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', uploadFile);
+      formData.append('description', uploadDesc);
+      await addPortfolioItem(formData);
+      setUploadDesc('');
+      setUploadFile(null);
+      setShowUploadForm(false);
+      const res = await getPortfolio(user._id);
+      setPortfolio(res.data);
     } catch (err) {
       console.error(err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeletePortfolio = async (itemId) => {
+    if (!window.confirm('Delete this portfolio item?')) return;
+    try {
+      await deletePortfolioItem(itemId);
+      setPortfolio(prev => prev.filter(p => p._id !== itemId));
+    } catch (err) { console.error(err); }
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const res = await uploadAvatar(fd);
+      setProfileData(prev => ({ ...prev, avatar: res.data.avatar }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPwError('');
+    if (pwForm.new_password !== pwForm.confirm) { setPwError('Passwords do not match'); return; }
+    if (pwForm.new_password.length < 8) { setPwError('New password must be at least 8 characters'); return; }
+    setPwSaving(true);
+    try {
+      await changePassword({ current_password: pwForm.current_password, new_password: pwForm.new_password });
+      setPwSuccess(true);
+      setPwForm({ current_password: '', new_password: '', confirm: '' });
+      setTimeout(() => { setPwSuccess(false); setShowPasswordForm(false); }, 2000);
+    } catch (err) {
+      setPwError(err.response?.data?.detail || 'Failed to change password');
+    } finally {
+      setPwSaving(false);
     }
   };
 
   const fullName = profileData ? `${profileData.first_name || ''} ${profileData.last_name || ''}` : '';
   const isProvider = profileData?.role === 'provider' || !!profileData?.provider_profile;
 
-  // SKELETON COMPONENT
-  const Skeleton = ({ className }) => (
-    <div className={`animate-pulse bg-white/5 rounded-lg ${className}`}></div>
-  );
+  const Skeleton = ({ className }) => <div className={`animate-pulse bg-white/5 rounded-lg ${className}`} />;
+  const inputClass = 'w-full px-4 py-3 rounded-[20px] bg-[#0F172A] border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#22C55E] focus:border-transparent transition';
 
   if (loading) {
     return (
@@ -114,40 +287,243 @@ export default function Profile() {
     );
   }
 
+  // ─── EDIT MODE ────────────────────────────────────────────────────────────────
+  if (editMode) {
+    return (
+      <div className="min-h-screen bg-[#0F172A] text-white px-6 py-10">
+        <div className="max-w-2xl mx-auto space-y-6">
+
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-white">Edit Profile</h1>
+            <button
+              onClick={() => { setEditMode(false); setEditMapOpen(false); }}
+              className="text-white/40 hover:text-white transition text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+
+          {saveError && (
+            <div className="p-3 rounded-[20px] bg-red-500/20 border border-red-500/30 text-red-300 text-sm">
+              {saveError}
+            </div>
+          )}
+
+          {/* Personal Info */}
+          <div className="bg-[#1E293B] border border-white/10 rounded-[20px] p-6 space-y-4">
+            <h3 className="text-sm font-semibold text-white/40 uppercase tracking-widest">Personal Info</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-white/60 mb-1">First name</label>
+                <input className={inputClass} value={editForm.first_name}
+                  onChange={e => setEditForm({ ...editForm, first_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Last name</label>
+                <input className={inputClass} value={editForm.last_name}
+                  onChange={e => setEditForm({ ...editForm, last_name: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-white/60 mb-1">Phone</label>
+              <input className={inputClass} value={editForm.phone}
+                onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="+216..." />
+            </div>
+          </div>
+
+          {/* Provider Info */}
+          {isProvider && (
+            <div className="bg-[#1E293B] border border-white/10 rounded-[20px] p-6 space-y-4">
+              <h3 className="text-sm font-semibold text-white/40 uppercase tracking-widest">Provider Details</h3>
+
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Bio</label>
+                <textarea className={inputClass + ' resize-none'} rows={4}
+                  value={editForm.bio}
+                  onChange={e => setEditForm({ ...editForm, bio: e.target.value })}
+                  placeholder="Tell clients about yourself..." />
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Service Categories</label>
+                <div className="flex flex-wrap gap-2">
+                  {SERVICE_CATEGORIES.map(cat => (
+                    <button key={cat} type="button"
+                      onClick={() => setEditForm(prev => ({
+                        ...prev,
+                        service_categories: prev.service_categories.includes(cat)
+                          ? prev.service_categories.filter(c => c !== cat)
+                          : [...prev.service_categories, cat],
+                      }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
+                        editForm.service_categories.includes(cat)
+                          ? 'bg-[#22C55E] text-white'
+                          : 'bg-[#0F172A] text-white/60 border border-white/10 hover:border-[#22C55E]/50'
+                      }`}
+                    >{cat}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Experience (years)</label>
+                  <input type="number" min="0" className={inputClass}
+                    value={editForm.experience_years}
+                    onChange={e => setEditForm({ ...editForm, experience_years: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Hourly Rate (DA)</label>
+                  <input type="number" min="0" className={inputClass}
+                    value={editForm.hourly_rate}
+                    onChange={e => setEditForm({ ...editForm, hourly_rate: e.target.value })} />
+                </div>
+              </div>
+
+              {/* Work type */}
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Work Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'in_place', label: 'In-Place', icon: '📍' },
+                    { value: 'remote',   label: 'Remote',   icon: '💻' },
+                    { value: 'both',     label: 'Both',     icon: '🌐' },
+                  ].map(opt => (
+                    <button key={opt.value} type="button"
+                      onClick={() => setEditForm({ ...editForm, job_type: opt.value })}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded-[12px] border text-xs font-semibold transition-all ${
+                        editForm.job_type === opt.value
+                          ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
+                          : 'border-white/10 bg-[#0F172A] text-white/50 hover:border-white/20'
+                      }`}
+                    >
+                      <span>{opt.icon}</span>{opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Location Picker — hidden for remote-only providers */}
+              {editForm.job_type !== 'remote' && <div>
+                <label className="block text-xs text-white/60 mb-1">Location</label>
+                {!editMapOpen ? (
+                  <button type="button" onClick={() => setEditMapOpen(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-[20px] bg-[#0F172A] border border-white/10 text-white/60 hover:border-[#22C55E]/50 transition"
+                  >
+                    <svg className="w-4 h-4 text-red-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                    {editForm.latitude
+                      ? <span className="text-[#4ADE80] font-medium text-sm">✓ {editForm.latitude.toFixed(4)}, {editForm.longitude.toFixed(4)}</span>
+                      : <span className="text-sm">Click to update location</span>}
+                  </button>
+                ) : (
+                  <div className="rounded-[20px] overflow-hidden border border-white/10" style={{ position: 'relative' }}>
+                    {/* Search */}
+                    <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, width: '80%' }}>
+                      <input type="text" placeholder="Search location..."
+                        value={editLocationSearch}
+                        onChange={e => handleEditLocationSearch(e.target.value)}
+                        className="w-full px-4 py-2 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] shadow-lg text-sm" />
+                      {editLocationResults.length > 0 && (
+                        <div style={{ backgroundColor: '#1E293B', borderRadius: '12px', marginTop: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          {editLocationResults.map(r => (
+                            <div key={r.place_id} onClick={() => {
+                              const loc = [parseFloat(r.lat), parseFloat(r.lon)];
+                              setEditFlyTarget(loc);
+                              setEditForm({ ...editForm, latitude: loc[0], longitude: loc[1] });
+                              setEditLocationSearch(r.display_name.split(',').slice(0, 2).join(','));
+                              setEditLocationResults([]);
+                            }}
+                              style={{ padding: '8px 14px', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                              {r.display_name.split(',').slice(0, 2).join(',')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <MapContainer center={editFlyTarget} zoom={6} style={{ height: '260px', width: '100%' }} zoomControl={false}>
+                      <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" />
+                      <FlyToLocation position={editFlyTarget} />
+                      <LocationPicker onLocationSet={loc => setEditForm({ ...editForm, latitude: loc[0], longitude: loc[1] })} />
+                      {editForm.latitude && <Marker position={[editForm.latitude, editForm.longitude]} />}
+                    </MapContainer>
+                    <div style={{ backgroundColor: '#1E293B', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: editForm.latitude ? '#4ADE80' : 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
+                        {editForm.latitude ? `✓ ${editForm.latitude.toFixed(4)}, ${editForm.longitude.toFixed(4)}` : 'Click on the map to pin your location'}
+                      </span>
+                      <button type="button" onClick={() => setEditMapOpen(false)}
+                        style={{ backgroundColor: '#22C55E', color: 'white', border: 'none', borderRadius: '20px', padding: '6px 16px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>}
+            </div>
+          )}
+
+          {/* Save */}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-3.5 rounded-[20px] bg-gradient-to-r from-[#22C55E] to-[#4ADE80] hover:from-[#16A34A] hover:to-[#22C55E] disabled:opacity-50 text-white font-semibold shadow-lg shadow-[#22C55E]/30 transition-all duration-200"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── VIEW MODE ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0F172A] text-white px-6 py-10 relative">
       <div className="fixed inset-0 bg-gradient-to-br from-[#22C55E]/5 via-transparent to-[#4ADE80]/5 pointer-events-none z-0" />
-      
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      {/* Menu button */}
-      <button
-        onClick={() => setDrawerOpen(true)}
-        className="fixed top-6 left-6 z-40 w-10 h-10 rounded-[15px] bg-[#1E293B] border border-white/10 shadow-lg flex items-center justify-center text-white hover:bg-[#22C55E] transition-all duration-300"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+      {/* Menu button + Theme toggle */}
+      <div className="fixed top-6 left-6 z-40 flex items-center gap-2">
+        <button onClick={() => setDrawerOpen(true)}
+          className="w-10 h-10 rounded-[15px] bg-[#1E293B] border border-white/10 shadow-lg flex items-center justify-center text-white hover:bg-[#22C55E] transition-all duration-300"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <ThemeToggle />
+      </div>
 
       <div className="max-w-4xl mx-auto relative z-10">
-        
+
         {/* HEADER CARD */}
         <div className="bg-[#1E293B] border border-white/10 rounded-[20px] p-6 md:p-8 shadow-xl relative overflow-hidden mb-8">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-[#22C55E]/5 rounded-full blur-[80px] -z-10"></div>
-          
+          <div className="absolute top-0 right-0 w-64 h-64 bg-[#22C55E]/5 rounded-full blur-[80px] -z-10" />
           <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
             {/* Avatar */}
-            <div className="w-28 h-28 rounded-full border-2 border-[#22C55E]/30 overflow-hidden bg-white/5 flex items-center justify-center shrink-0 shadow-lg relative group">
-              {profileData?.avatar ? (
-                <img src={`/uploads/${profileData.avatar}`} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-4xl font-bold text-white/20 capitalize">{fullName.charAt(0) || '?'}</span>
-              )}
+            <div className="relative shrink-0">
+              <div className="w-28 h-28 rounded-full border-2 border-[#22C55E]/30 overflow-hidden bg-white/5 flex items-center justify-center shadow-lg">
+                {profileData?.avatar ? (
+                  <img src={`/uploads/${profileData.avatar}`} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-4xl font-bold text-white/20 capitalize">{fullName.charAt(0) || '?'}</span>
+                )}
+              </div>
               {isOwnProfile && (
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" strokeWidth="2"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
-                </div>
+                <>
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#22C55E] border-2 border-[#0F172A] flex items-center justify-center hover:bg-[#16A34A] transition-all shadow-lg"
+                    title="Change avatar"
+                  >
+                    {avatarUploading
+                      ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    }
+                  </button>
+                  <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatarChange} />
+                </>
               )}
             </div>
 
@@ -161,29 +537,40 @@ export default function Profile() {
                       {profileData?.email}
                     </span>
                     {isProvider && (
-                       <span className="text-white/50 text-sm flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+                      <span className="text-white/50 text-sm flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-full border border-white/5">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" strokeWidth="2"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
-                        {profileData?.provider_profile?.experience_years || profileData?.experience_years ? `${profileData.provider_profile?.experience_years || profileData?.experience_years} Experience` : 'Professional Provider'}
+                        {(profileData?.provider_profile?.experience_years || profileData?.experience_years)
+                          ? `${profileData.provider_profile?.experience_years || profileData.experience_years} yrs experience`
+                          : 'Professional Provider'}
                       </span>
                     )}
                   </div>
                 </div>
-                
+
                 <div className="flex flex-col items-end gap-3">
-                  <div className="px-3.5 py-1.5 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20 text-[#4ADE80] font-semibold text-sm shadow-[0_0_15px_rgba(34,197,94,0.1)] capitalize">
+                  <div className="px-3.5 py-1.5 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20 text-[#4ADE80] font-semibold text-sm capitalize">
                     {profileData?.role || 'User'} Account
                   </div>
                   {isProvider && (
-                    <button 
-                      onClick={isOwnProfile ? toggleAvailability : undefined}
+                    <button onClick={isOwnProfile ? toggleAvailability : undefined}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                        (profileData?.provider_profile?.is_available || profileData?.is_available) 
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                        (profileData?.provider_profile?.is_available || profileData?.is_available)
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           : 'bg-red-500/20 text-red-400 border border-red-500/30'
                       } ${!isOwnProfile ? 'cursor-default' : ''}`}
                     >
-                      <div className={`w-2 h-2 rounded-full animate-pulse ${(profileData?.provider_profile?.is_available || profileData?.is_available) ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
-                      {(profileData?.provider_profile?.is_available || profileData?.is_available) ? 'Available Now' : 'Currently Unavailable'}
+                      <div className={`w-2 h-2 rounded-full animate-pulse ${(profileData?.provider_profile?.is_available || profileData?.is_available) ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      {(profileData?.provider_profile?.is_available || profileData?.is_available) ? 'Available Now' : 'Unavailable'}
+                    </button>
+                  )}
+                  {isOwnProfile && isProvider && (
+                    <button onClick={enterEditMode}
+                      className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/30 text-[#4ADE80] text-xs font-semibold hover:bg-[#22C55E]/20 transition-all"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit Profile
                     </button>
                   )}
                 </div>
@@ -192,12 +579,12 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* STATS STRIP */}
+        {/* STATS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {isProvider ? (
             <>
               <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
-                <p className="text-3xl font-bold text-[#22C55E]">{profileData?.rating_avg?.toFixed(1) || profileData?.rating?.toFixed(1) || '0.0'}</p>
+                <p className="text-3xl font-bold text-[#22C55E]">{profileData?.rating_avg?.toFixed(1) || '0.0'}</p>
                 <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Rating Score</p>
               </div>
               <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
@@ -208,116 +595,250 @@ export default function Profile() {
                 <p className="text-3xl font-bold text-white/90">{profileData?.completed_jobs || 0}</p>
                 <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Completed Jobs</p>
               </div>
+              {(() => {
+                const jt = profileData?.provider_profile?.job_type || 'in_place';
+                const map = { in_place: { label: 'In-Place', icon: '📍', color: '#22C55E' }, remote: { label: 'Remote', icon: '💻', color: '#6366F1' }, both: { label: 'Both', icon: '🌐', color: '#F59E0B' } };
+                const { label, icon, color } = map[jt] || map.in_place;
+                return (
+                  <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
+                    <p className="text-3xl font-bold" style={{ color }}>{icon}</p>
+                    <p className="text-white/90 text-sm font-semibold mt-1">{label}</p>
+                    <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-0.5">Work Type</p>
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <>
               <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
-                <p className="text-3xl font-bold text-[#22C55E]">{profileData?.total_requests || 0}</p>
+                <p className="text-3xl font-bold text-[#22C55E]">{profileData?.rating_avg?.toFixed(1) || '0.0'}</p>
+                <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Rating Score</p>
+              </div>
+              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
+                <p className="text-3xl font-bold text-white/90">{profileData?.total_reviews ?? ratings.length}</p>
+                <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Total Reviews</p>
+              </div>
+              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
+                <p className="text-3xl font-bold text-white/90">{profileData?.total_requests || 0}</p>
                 <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Total Requests</p>
-              </div>
-              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
-                <p className="text-3xl font-bold text-white/90">{profileData?.active_requests || 0}</p>
-                <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Active Requests</p>
-              </div>
-              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] text-center">
-                <p className="text-xl font-bold text-white/90 mt-2">{profileData?.member_since || 'March 2026'}</p>
-                <p className="text-white/40 text-xs font-medium uppercase tracking-wider mt-1">Member Since</p>
               </div>
             </>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* LEFT COL: INFO */}
+          {/* LEFT: INFO */}
           <div className="md:col-span-1 space-y-6">
             <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
               <h3 className="text-sm font-semibold text-white/40 uppercase tracking-widest mb-4">About</h3>
               {isProvider ? (
                 <>
-                   <div className="mb-4">
+                  <div className="mb-4">
                     <p className="text-xs text-white/40 mb-1">Service Categories</p>
                     <div className="flex flex-wrap gap-2">
-                       {profileData?.provider_profile?.service_categories?.map(cat => (
-                         <span key={cat} className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20">{cat}</span>
-                       )) || profileData?.service_categories?.map(cat => (
+                      {(profileData?.provider_profile?.service_categories || profileData?.service_categories || []).map(cat => (
                         <span key={cat} className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20">{cat}</span>
                       ))}
                     </div>
                   </div>
                   <div>
                     <p className="text-xs text-white/40 mb-1">Hourly Rate</p>
-                    <p className="text-lg font-bold text-emerald-400">${profileData?.provider_profile?.hourly_rate || profileData?.hourly_rate || 0}/hr</p>
+                    <p className="text-lg font-bold text-emerald-400">{profileData?.provider_profile?.hourly_rate || profileData?.hourly_rate || 0} DA/hr</p>
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-white/60">Professional profile details and account management dashboard.</p>
+                <p className="text-sm text-white/60">Account dashboard and service request history.</p>
               )}
             </div>
 
-            {/* TRUSTED DEVICES BOX - ONLY SHOW FOR OWN PROFILE */}
             {isOwnProfile && (
-              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
-                 <h3 className="text-sm font-semibold text-white/40 uppercase tracking-widest mb-4">Security</h3>
-                 <p className="text-xs text-white/50 mb-4">Revoke access for all trusted devices.</p>
-                 {message && <p className="text-xs text-emerald-400 mb-2">{message}</p>}
-                 <button 
-                    onClick={handleRemoveDevices}
-                    disabled={revoking}
+              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] space-y-4">
+                <h3 className="text-sm font-semibold text-white/40 uppercase tracking-widest">Security</h3>
+
+                {/* Password change */}
+                <div>
+                  <button
+                    onClick={() => { setShowPasswordForm(v => !v); setPwError(''); setPwSuccess(false); }}
+                    className="w-full py-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-medium hover:bg-white/10 transition-all text-left px-3 flex items-center justify-between"
+                  >
+                    <span>Change Password</span>
+                    <svg className={`w-3.5 h-3.5 transition-transform ${showPasswordForm ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  {showPasswordForm && (
+                    <form onSubmit={handlePasswordChange} className="mt-3 space-y-2">
+                      {pwError && <p className="text-xs text-red-400">{pwError}</p>}
+                      {pwSuccess && <p className="text-xs text-emerald-400">Password changed successfully!</p>}
+                      <input
+                        type="password" placeholder="Current password" required
+                        value={pwForm.current_password}
+                        onChange={e => setPwForm(p => ({ ...p, current_password: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-[12px] bg-[#0F172A] border border-white/10 text-white text-xs placeholder-white/30 outline-none focus:border-[#22C55E]/50"
+                      />
+                      <input
+                        type="password" placeholder="New password (min 8 chars)" required
+                        value={pwForm.new_password}
+                        onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-[12px] bg-[#0F172A] border border-white/10 text-white text-xs placeholder-white/30 outline-none focus:border-[#22C55E]/50"
+                      />
+                      <input
+                        type="password" placeholder="Confirm new password" required
+                        value={pwForm.confirm}
+                        onChange={e => setPwForm(p => ({ ...p, confirm: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-[12px] bg-[#0F172A] border border-white/10 text-white text-xs placeholder-white/30 outline-none focus:border-[#22C55E]/50"
+                      />
+                      <button type="submit" disabled={pwSaving}
+                        className="w-full py-2 rounded-[12px] bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#4ADE80] text-xs font-semibold hover:bg-[#22C55E]/30 transition-all disabled:opacity-50"
+                      >
+                        {pwSaving ? 'Saving...' : 'Update Password'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                {/* Revoke devices */}
+                <div>
+                  <p className="text-xs text-white/50 mb-2">Revoke all trusted devices (forces re-login everywhere).</p>
+                  {message && <p className="text-xs text-emerald-400 mb-2">{message}</p>}
+                  <button onClick={handleRemoveDevices} disabled={revoking}
                     className="w-full py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-all disabled:opacity-50"
-                 >
-                   {revoking ? 'Removing...' : 'Untrust All Devices'}
-                 </button>
+                  >
+                    {revoking ? 'Removing...' : 'Untrust All Devices'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
-          {/* RIGHT COL: MAIN CONTENT */}
+          {/* RIGHT: MAIN CONTENT */}
           <div className="md:col-span-2 space-y-6">
             {isProvider ? (
               <>
-                 <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
-                    <h2 className="text-lg font-bold mb-4">Service Description</h2>
-                    <p className="text-white/60 text-sm leading-relaxed whitespace-pre-wrap">
-                      {profileData?.provider_profile?.bio || profileData?.bio || 'No description provided yet.'}
-                    </p>
-                 </div>
+                <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
+                  <h2 className="text-lg font-bold mb-4">Service Description</h2>
+                  <p className="text-white/60 text-sm leading-relaxed whitespace-pre-wrap">
+                    {profileData?.provider_profile?.bio || profileData?.bio || 'No description provided yet.'}
+                  </p>
+                </div>
 
-                 {/* PORTFOLIO */}
-                 <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-bold">Portfolio</h2>
-                      {isOwnProfile && <button className="text-xs text-[#22C55E] hover:underline font-medium">Manage Items</button>}
-                    </div>
-                    {portfolio.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        {portfolio.map(item => (
-                          <div key={item._id} className="group relative aspect-video rounded-xl overflow-hidden bg-white/5">
-                            <img src={`/uploads/${item.filename}`} alt={item.description} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex items-end">
-                               <p className="text-xs text-white truncate">{item.description}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="h-32 flex items-center justify-center border-2 border-dashed border-white/5 rounded-xl">
-                        <p className="text-white/20 text-sm">No portfolio items added yet.</p>
-                      </div>
+                {/* PORTFOLIO */}
+                <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold">Portfolio</h2>
+                    {isOwnProfile && (
+                      <button onClick={() => setShowUploadForm(v => !v)}
+                        className="text-xs text-[#22C55E] hover:underline font-medium flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Image
+                      </button>
                     )}
-                 </div>
+                  </div>
+
+                  {/* Upload form */}
+                  {showUploadForm && isOwnProfile && (
+                    <form onSubmit={handlePortfolioUpload} className="mb-4 p-4 rounded-[15px] bg-[#0F172A] border border-white/5 space-y-3">
+                      <input type="file" accept="image/jpeg,image/png,image/webp"
+                        onChange={e => setUploadFile(e.target.files[0])}
+                        className="w-full text-sm text-white/60 file:mr-3 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:bg-[#22C55E]/20 file:text-[#4ADE80] hover:file:bg-[#22C55E]/30 cursor-pointer" />
+                      <input type="text" placeholder="Description..."
+                        value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
+                        className="w-full px-3 py-2 rounded-[12px] bg-[#1E293B] border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#22C55E]" />
+                      <button type="submit" disabled={uploading || !uploadFile || !uploadDesc.trim()}
+                        className="w-full py-2 rounded-[12px] bg-[#22C55E] text-white text-sm font-semibold disabled:opacity-50 hover:bg-[#16A34A] transition"
+                      >
+                        {uploading ? 'Uploading...' : 'Upload'}
+                      </button>
+                    </form>
+                  )}
+
+                  {portfolio.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      {portfolio.map(item => (
+                        <div key={item._id} className="group relative aspect-video rounded-xl overflow-hidden bg-white/5">
+                          <img src={`/uploads/${item.image_path}`} alt={item.description}
+                            className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex items-end justify-between">
+                            <p className="text-xs text-white truncate">{item.description}</p>
+                            {isOwnProfile && (
+                              <button onClick={() => handleDeletePortfolio(item._id)}
+                                className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center shrink-0 ml-2 hover:bg-red-500 transition"
+                              >
+                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-32 flex items-center justify-center border-2 border-dashed border-white/5 rounded-xl">
+                      <p className="text-white/20 text-sm">No portfolio items yet.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* REVIEWS */}
+                {ratings.length > 0 && (
+                  <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
+                    <h2 className="text-lg font-bold mb-4">Reviews</h2>
+                    <div className="space-y-3">
+                      {ratings.slice(0, 5).map(r => (
+                        <div key={r._id} className="p-3 rounded-[12px] bg-[#0F172A] border border-white/5">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="flex gap-0.5">
+                              {[1,2,3,4,5].map(s => (
+                                <svg key={s} className={`w-3 h-3 ${s <= r.score ? 'text-yellow-400' : 'text-white/10'}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                </svg>
+                              ))}
+                            </div>
+                            <span className="text-white/30 text-[10px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {r.comment && <p className="text-white/60 text-xs">{r.comment}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
-               <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px] min-h-[300px] flex flex-col items-center justify-center text-center">
-                  <svg className="w-16 h-16 text-white/5 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="1.5"/></svg>
-                  <h2 className="text-xl font-bold text-white/80">Activity Dashboard</h2>
-                  <p className="text-white/40 text-sm mt-2 max-w-xs">{isOwnProfile ? "You haven't made any service requests yet." : "This user has no public activity to display."}</p>
-                  {isOwnProfile && <a href="/map" className="mt-6 px-6 py-2 rounded-full bg-[#22C55E] text-white font-semibold text-sm hover:scale-105 transition-transform">Start Searching</a>}
-               </div>
+              <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
+                <h2 className="text-lg font-bold mb-4">Reviews</h2>
+                {ratings.length > 0 ? (
+                  <div className="space-y-3">
+                    {ratings.slice(0, 5).map(r => (
+                      <div key={r._id} className="p-3 rounded-[12px] bg-[#0F172A] border border-white/5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="flex gap-0.5">
+                            {[1,2,3,4,5].map(s => (
+                              <svg key={s} className={`w-3 h-3 ${s <= r.score ? 'text-yellow-400' : 'text-white/10'}`} fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                              </svg>
+                            ))}
+                          </div>
+                          <span className="text-white/30 text-[10px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {r.comment && <p className="text-white/60 text-xs">{r.comment}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="min-h-[200px] flex flex-col items-center justify-center text-center">
+                    <svg className="w-12 h-12 text-white/5 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                    </svg>
+                    <p className="text-white/30 text-sm">No reviews yet</p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
-
       </div>
     </div>
   );
-}
+}

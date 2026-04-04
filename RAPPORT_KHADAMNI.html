@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Khadamni — Technical Report</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0F172A; color: #E2E8F0; line-height: 1.7; }
+
+  /* ── Layout ── */
+  .sidebar { position: fixed; top: 0; left: 0; width: 260px; height: 100vh; background: #1E293B; border-right: 1px solid rgba(255,255,255,0.07); overflow-y: auto; padding: 24px 0; z-index: 100; }
+  .main { margin-left: 260px; padding: 48px 56px; max-width: 960px; }
+
+  /* ── Sidebar ── */
+  .sidebar-logo { padding: 0 24px 24px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .sidebar-logo h1 { font-size: 20px; font-weight: 800; color: #22C55E; letter-spacing: 0.1em; }
+  .sidebar-logo p { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+  .nav-section { padding: 20px 24px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: rgba(255,255,255,0.25); text-transform: uppercase; }
+  .nav-link { display: block; padding: 8px 24px; font-size: 13px; color: rgba(255,255,255,0.55); text-decoration: none; border-left: 3px solid transparent; transition: all 0.15s; }
+  .nav-link:hover { color: #22C55E; border-left-color: #22C55E; background: rgba(34,197,94,0.05); }
+
+  /* ── Headings ── */
+  h2 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 8px; padding-top: 16px; }
+  h2 span { color: #22C55E; }
+  h3 { font-size: 18px; font-weight: 700; color: #4ADE80; margin: 28px 0 10px; }
+  h4 { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.85); margin: 18px 0 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .section-intro { color: rgba(255,255,255,0.5); font-size: 14px; margin-bottom: 24px; border-left: 3px solid #22C55E; padding-left: 14px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 48px 0; }
+
+  /* ── Cards ── */
+  .card { background: #1E293B; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+  .card-green { border-left: 4px solid #22C55E; }
+  .card-blue { border-left: 4px solid #3B82F6; }
+  .card-purple { border-left: 4px solid #8B5CF6; }
+  .card-yellow { border-left: 4px solid #F59E0B; }
+  .card-red { border-left: 4px solid #EF4444; }
+
+  /* ── Code ── */
+  code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 6px; color: #4ADE80; }
+  pre { background: #0A1628; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #94A3B8; font-size: 13px; }
+  .kw { color: #818CF8; } /* keyword */
+  .fn { color: #38BDF8; } /* function */
+  .str { color: #34D399; } /* string */
+  .cm { color: #475569; } /* comment */
+  .num { color: #F59E0B; } /* number */
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th { background: rgba(34,197,94,0.1); color: #4ADE80; font-weight: 700; padding: 10px 14px; text-align: left; border-bottom: 1px solid rgba(34,197,94,0.2); }
+  td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.75); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── Badges ── */
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge-green { background: rgba(34,197,94,0.15); color: #4ADE80; }
+  .badge-blue { background: rgba(59,130,246,0.15); color: #60A5FA; }
+  .badge-purple { background: rgba(139,92,246,0.15); color: #A78BFA; }
+  .badge-yellow { background: rgba(245,158,11,0.15); color: #FCD34D; }
+  .badge-red { background: rgba(239,68,68,0.15); color: #FCA5A5; }
+
+  /* ── Flow steps ── */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 16px 0; }
+  .flow-step { display: flex; gap: 16px; align-items: flex-start; padding: 12px 0; }
+  .flow-num { min-width: 28px; height: 28px; border-radius: 50%; background: #22C55E; color: #0F172A; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .flow-line { position: relative; }
+  .flow-step:not(:last-child) .flow-num::after { content: ''; position: absolute; left: 14px; top: 32px; width: 1px; height: calc(100% + 4px); background: rgba(34,197,94,0.2); }
+  .flow-text { font-size: 14px; color: rgba(255,255,255,0.75); }
+  .flow-text strong { color: #fff; }
+
+  /* ── Stack grid ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 12px 0; }
+
+  /* ── Q&A ── */
+  .qa { margin: 12px 0; }
+  .qa-q { font-weight: 700; color: #38BDF8; font-size: 14px; margin-bottom: 6px; }
+  .qa-a { color: rgba(255,255,255,0.7); font-size: 14px; padding-left: 16px; border-left: 2px solid rgba(56,189,248,0.3); }
+
+  /* ── Hero ── */
+  .hero { background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(15,23,42,0)); border: 1px solid rgba(34,197,94,0.2); border-radius: 20px; padding: 32px; margin-bottom: 40px; }
+  .hero h1 { font-size: 36px; font-weight: 900; color: #fff; }
+  .hero h1 span { color: #22C55E; }
+  .hero p { color: rgba(255,255,255,0.5); font-size: 15px; margin-top: 8px; }
+  .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+  /* ── Architecture diagram ── */
+  .arch { background: #0A1628; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 28px; margin: 16px 0; font-family: monospace; font-size: 13px; color: #94A3B8; line-height: 2; }
+  .arch .green { color: #22C55E; }
+  .arch .blue { color: #38BDF8; }
+  .arch .purple { color: #A78BFA; }
+  .arch .yellow { color: #FCD34D; }
+  .arch .arrow { color: rgba(255,255,255,0.2); }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>KHADAMNI</h1>
+    <p>Technical Report — Interview Prep</p>
+  </div>
+
+  <div class="nav-section">Overview</div>
+  <a href="#overview" class="nav-link">📋 Project Overview</a>
+  <a href="#stack" class="nav-link">🛠 Tech Stack</a>
+  <a href="#architecture" class="nav-link">🏗 Architecture</a>
+  <a href="#database" class="nav-link">🗄 Database Design</a>
+
+  <div class="nav-section">Backend</div>
+  <a href="#auth" class="nav-link">🔐 Authentication (JWT + OTP)</a>
+  <a href="#providers" class="nav-link">📍 Providers & Map</a>
+  <a href="#requests" class="nav-link">📬 Request System</a>
+  <a href="#chat" class="nav-link">💬 Chat & WebSocket</a>
+  <a href="#ratings" class="nav-link">⭐ Ratings</a>
+  <a href="#ai" class="nav-link">🤖 AI Features</a>
+
+  <div class="nav-section">Frontend</div>
+  <a href="#react" class="nav-link">⚛️ React Architecture</a>
+  <a href="#map-page" class="nav-link">🗺 Map Page</a>
+  <a href="#chat-page" class="nav-link">💬 Chat Page</a>
+  <a href="#tracking" class="nav-link">📡 Real-Time Tracking</a>
+  <a href="#theme" class="nav-link">🎨 Theme System</a>
+
+  <div class="nav-section">Key Concepts</div>
+  <a href="#security" class="nav-link">🛡 Security</a>
+  <a href="#realtime" class="nav-link">⚡ Real-Time (WS)</a>
+  <a href="#geo" class="nav-link">🌍 Geolocation</a>
+  <a href="#flow" class="nav-link">🔄 Full User Flow</a>
+  <a href="#qa" class="nav-link">❓ Interview Q&A</a>
+</nav>
+
+<!-- ═══════════════════════ MAIN ═══════════════════════ -->
+<main class="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>KHADAMNI <span>Technical Report</span></h1>
+    <p>Everything you need to know for your technical interview — architecture, code, decisions, and Q&A.</p>
+    <div class="hero-tags">
+      <span class="badge badge-green">React 19</span>
+      <span class="badge badge-blue">FastAPI</span>
+      <span class="badge badge-yellow">MongoDB</span>
+      <span class="badge badge-purple">WebSocket</span>
+      <span class="badge badge-green">JWT + OTP</span>
+      <span class="badge badge-blue">Leaflet Maps</span>
+      <span class="badge badge-purple">Groq AI (Llama 3.3)</span>
+      <span class="badge badge-red">OSRM Routing</span>
+    </div>
+  </div>
+
+  <!-- ═══ OVERVIEW ═══ -->
+  <section id="overview">
+    <h2>📋 Project <span>Overview</span></h2>
+    <p class="section-intro">Khadamni is a full-stack Tunisian home-services marketplace. Clients find and hire providers for in-place or remote services. The whole cycle — discovery, request, negotiation, real-time chat, tracking, completion, and rating — runs in one app.</p>
+
+    <div class="grid2">
+      <div class="card card-green">
+        <h4>Client Journey</h4>
+        <div class="flow">
+          <div class="flow-step"><div class="flow-num">1</div><div class="flow-text">Register / Login with OTP</div></div>
+          <div class="flow-step"><div class="flow-num">2</div><div class="flow-text">Set location on map</div></div>
+          <div class="flow-step"><div class="flow-num">3</div><div class="flow-text">Browse / AI-search providers</div></div>
+          <div class="flow-step"><div class="flow-num">4</div><div class="flow-text">Send a service request</div></div>
+          <div class="flow-step"><div class="flow-num">5</div><div class="flow-text">Chat & negotiate price</div></div>
+          <div class="flow-step"><div class="flow-num">6</div><div class="flow-text">Track provider on map</div></div>
+          <div class="flow-step"><div class="flow-num">7</div><div class="flow-text">Rate after completion</div></div>
+        </div>
+      </div>
+      <div class="card card-blue">
+        <h4>Provider Journey</h4>
+        <div class="flow">
+          <div class="flow-step"><div class="flow-num">1</div><div class="flow-text">Register with skills & location</div></div>
+          <div class="flow-step"><div class="flow-num">2</div><div class="flow-step"><div class="flow-num" style="min-width:20px;height:20px;font-size:10px"></div></div></div>
+          <div class="flow-step"><div class="flow-num">2</div><div class="flow-text">Appear on client map</div></div>
+          <div class="flow-step"><div class="flow-num">3</div><div class="flow-text">Accept / reject requests</div></div>
+          <div class="flow-step"><div class="flow-num">4</div><div class="flow-text">Chat & send price offer</div></div>
+          <div class="flow-step"><div class="flow-num">5</div><div class="flow-text">Share GPS while travelling</div></div>
+          <div class="flow-step"><div class="flow-num">6</div><div class="flow-text">Mark job complete</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ STACK ═══ -->
+  <section id="stack">
+    <h2>🛠 Tech <span>Stack</span></h2>
+    <p class="section-intro">Every tool was chosen for a specific reason — not just because it's popular.</p>
+
+    <table>
+      <tr><th>Layer</th><th>Technology</th><th>Why this one?</th></tr>
+      <tr><td>Frontend</td><td><span class="badge badge-green">React 19</span> + Vite</td><td>Fast SPA, component reuse, hooks for state. Vite for instant HMR dev experience.</td></tr>
+      <tr><td>Routing</td><td>React Router v6</td><td>Declarative routes, <code>useParams</code> for dynamic pages like <code>/chat/:requestId</code>.</td></tr>
+      <tr><td>Styling</td><td>Tailwind CSS v4</td><td>Utility-first, no CSS files per component, consistent dark theme.</td></tr>
+      <tr><td>Map</td><td>Leaflet + react-leaflet</td><td>Free, open-source, works with any tile provider. Used Stadia Maps tiles.</td></tr>
+      <tr><td>Backend</td><td><span class="badge badge-blue">FastAPI</span> (Python)</td><td>Async by default, auto-generates OpenAPI docs, Pydantic validation built-in.</td></tr>
+      <tr><td>Database</td><td><span class="badge badge-yellow">MongoDB</span> + Motor</td><td>Flexible schema for profiles, native geospatial (2dsphere), Motor for async.</td></tr>
+      <tr><td>Real-time</td><td>WebSockets (native FastAPI)</td><td>Bidirectional, low-latency for chat and live location — no polling needed.</td></tr>
+      <tr><td>Auth</td><td>JWT + OTP + device tokens</td><td>JWT for stateless sessions, OTP for 2FA, device tokens to skip OTP on trusted devices.</td></tr>
+      <tr><td>AI</td><td>Groq API (Llama 3.3 70B)</td><td>Free tier (14,400 req/day), very fast, handles Arabic/French/Tunisian dialect.</td></tr>
+      <tr><td>Routing (GPS)</td><td>OSRM public API</td><td>Free road routing, returns GeoJSON polyline for drawing on map.</td></tr>
+      <tr><td>Email</td><td>FastAPI-Mail + Gmail SMTP</td><td>Simple OTP delivery via existing Gmail account, no paid service needed.</td></tr>
+    </table>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ ARCHITECTURE ═══ -->
+  <section id="architecture">
+    <h2>🏗 <span>Architecture</span></h2>
+    <p class="section-intro">The app follows a clean separation: React SPA talks to FastAPI via REST + WebSocket. FastAPI talks to MongoDB. Nothing else.</p>
+
+    <div class="arch">
+      <span class="green">┌─────────────────── BROWSER ────────────────────┐</span><br/>
+      <span class="green">│  React SPA  (Vite, port 5173)                   │</span><br/>
+      <span class="green">│  ┌──────────┐  ┌────────────┐  ┌─────────────┐  │</span><br/>
+      <span class="green">│  │ Pages    │  │ Context    │  │  Components │  │</span><br/>
+      <span class="green">│  │ Map      │  │ AuthContext│  │  Navbar     │  │</span><br/>
+      <span class="green">│  │ ChatPage │  │ ThemeCtx   │  │  SideDrawer │  │</span><br/>
+      <span class="green">│  │ Requests │  └────────────┘  │  ThemeToggle│  │</span><br/>
+      <span class="green">│  │ Tracking │                   └─────────────┘  │</span><br/>
+      <span class="green">│  └──────────┘                                    │</span><br/>
+      <span class="green">└──────────────────────────────────────────────────┘</span><br/>
+      <span class="arrow">         │  HTTP (axios)          │  WebSocket</span><br/>
+      <span class="arrow">         ▼                      ▼</span><br/>
+      <span class="blue">┌─────────────────── FASTAPI ─────────────────────┐</span><br/>
+      <span class="blue">│  Uvicorn ASGI server  (port 8000)               │</span><br/>
+      <span class="blue">│  ┌──────────────────────────────────────────┐    │</span><br/>
+      <span class="blue">│  │  Routers                                 │    │</span><br/>
+      <span class="blue">│  │  /api/auth    /api/providers  /api/chat   │    │</span><br/>
+      <span class="blue">│  │  /api/requests /api/ratings  /api/ai      │    │</span><br/>
+      <span class="blue">│  │  /api/profile  /api/portfolio              │    │</span><br/>
+      <span class="blue">│  └──────────────────────────────────────────┘    │</span><br/>
+      <span class="blue">│  ┌──────────────────────────────────────────┐    │</span><br/>
+      <span class="blue">│  │  Services (business logic)               │    │</span><br/>
+      <span class="blue">│  │  auth_service  chat_service  ai_service   │    │</span><br/>
+      <span class="blue">│  │  provider_service  request_service         │    │</span><br/>
+      <span class="blue">│  └──────────────────────────────────────────┘    │</span><br/>
+      <span class="blue">│  ConnectionManager (WebSocket room registry)    │</span><br/>
+      <span class="blue">└──────────────────────────────────────────────────┘</span><br/>
+      <span class="arrow">         │</span><br/>
+      <span class="arrow">         ▼</span><br/>
+      <span class="yellow">┌───── MONGODB (Motor async driver) ──────────────┐</span><br/>
+      <span class="yellow">│  users  provider_profiles  service_requests     │</span><br/>
+      <span class="yellow">│  chat_rooms  chat_messages  ratings  reports     │</span><br/>
+      <span class="yellow">│  otp_codes  device_tokens                        │</span><br/>
+      <span class="yellow">└──────────────────────────────────────────────────┘</span><br/>
+      <br/>
+      <span class="purple">External APIs:  Groq (AI)  ·  OSRM (routing)  ·  Stadia Maps (tiles)  ·  Nominatim (geocoding)</span>
+    </div>
+
+    <h3>File Structure</h3>
+    <div class="grid2">
+      <div class="card">
+        <h4>Backend</h4>
+        <pre><code>backend/
+  app/
+    main.py          <span class="cm"># FastAPI app, routers, CORS</span>
+    config.py        <span class="cm"># Settings from .env</span>
+    database.py      <span class="cm"># MongoDB connect/disconnect</span>
+    dependencies.py  <span class="cm"># get_current_user (JWT guard)</span>
+    routers/
+      auth.py        <span class="cm"># register, login, verify-otp, /me</span>
+      providers.py   <span class="cm"># map search, geocode, routing</span>
+      requests.py    <span class="cm"># CRUD for service requests</span>
+      chat.py        <span class="cm"># HTTP + WebSocket endpoint</span>
+      ratings.py     <span class="cm"># submit & get ratings</span>
+      ai.py          <span class="cm"># AI endpoints (3 routes)</span>
+      profile.py     <span class="cm"># update profile</span>
+    services/
+      auth_service.py
+      chat_service.py
+      provider_service.py
+      request_service.py
+      ai_service.py   <span class="cm"># Groq calls + DB price stats</span>
+    websockets/
+      manager.py      <span class="cm"># ConnectionManager class</span></code></pre>
+      </div>
+      <div class="card">
+        <h4>Frontend</h4>
+        <pre><code>frontend/src/
+  App.jsx            <span class="cm"># Routes, providers</span>
+  index.css          <span class="cm"># Dark + light theme CSS</span>
+  api/
+    axios.js         <span class="cm"># Axios instance (base URL, token)</span>
+    chat.js          <span class="cm"># HTTP chat calls</span>
+    request.js       <span class="cm"># Request CRUD calls</span>
+    ratings.js       <span class="cm"># Rating calls</span>
+  context/
+    AuthContext.jsx   <span class="cm"># User state, login/logout</span>
+    ThemeContext.jsx  <span class="cm"># dark/light toggle</span>
+  pages/
+    Map.jsx           <span class="cm"># Main map, AI search</span>
+    ChatPage.jsx      <span class="cm"># WS chat, offers, rating</span>
+    Requests.jsx      <span class="cm"># Request list, report modal</span>
+    TrackingPage.jsx  <span class="cm"># Real-time GPS tracking</span>
+    Profile.jsx       <span class="cm"># Profile editor</span>
+  components/
+    Navbar.jsx
+    SideDrawer.jsx
+    ThemeToggle.jsx
+    ProtectedRoute.jsx</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ DATABASE ═══ -->
+  <section id="database">
+    <h2>🗄 Database <span>Design</span></h2>
+    <p class="section-intro">MongoDB with 9 collections. No rigid schema — documents can have different fields per role. Motor is the async Python driver so database calls don't block the server.</p>
+
+    <div class="grid2">
+      <div class="card card-green">
+        <h4>users</h4>
+        <pre><code>{
+  _id, email, password (hashed),
+  first_name, last_name, role,
+  <span class="cm">// providers also have:</span>
+  bio, service_categories[],
+  experience_years, job_type,
+  latitude, longitude
+}</code></pre>
+      </div>
+      <div class="card card-blue">
+        <h4>provider_profiles</h4>
+        <pre><code>{
+  _id, user_id (→ users),
+  full_name, bio, service_categories[],
+  hourly_rate, experience_years,
+  is_available, job_type,
+  latitude, longitude,
+  location: { type:"Point", coordinates:[lng,lat] },
+  avg_rating, total_jobs
+}</code></pre>
+        <p style="font-size:12px;color:#4ADE80;margin-top:8px;">⚡ Has a 2dsphere index on <code>location</code> for geospatial queries</p>
+      </div>
+      <div class="card card-yellow">
+        <h4>service_requests</h4>
+        <pre><code>{
+  _id, client_id, provider_id,
+  provider_profile_id,
+  client_name, provider_name,
+  description, status,
+  job_type, created_at, updated_at
+}
+<span class="cm">// status: pending → in_progress
+//        → confirmed → completed
+//        → rejected / cancelled</span></code></pre>
+      </div>
+      <div class="card card-purple">
+        <h4>chat_rooms</h4>
+        <pre><code>{
+  _id, request_id, client_id, provider_id,
+  status, agreed_price,
+  client_confirmed, provider_confirmed,
+  created_at, updated_at
+}</code></pre>
+      </div>
+      <div class="card">
+        <h4>chat_messages</h4>
+        <pre><code>{
+  _id, room_id, sender_id,
+  message, message_type,
+  <span class="cm">// message_type: text | offer | system</span>
+  offer_amount, offer_note, offer_status,
+  timestamp, is_read
+}</code></pre>
+      </div>
+      <div class="card card-red">
+        <h4>Other Collections</h4>
+        <pre><code><span class="cm">// otp_codes</span>
+{ email, code, expires_at }
+
+<span class="cm">// device_tokens</span>
+{ email, token (UUID), expires_at }
+
+<span class="cm">// ratings</span>
+{ job_id, rater_id, ratee_id,
+  score(1-5), comment }
+
+<span class="cm">// reports (AI dispute)</span>
+{ request_id, reporter_id,
+  reason, ai_analysis, status }</code></pre>
+      </div>
+    </div>
+
+    <h3>Why MongoDB over SQL?</h3>
+    <div class="card card-green">
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;font-size:14px;color:rgba(255,255,255,0.7)">
+        <li>✅ <strong style="color:#fff">Flexible schema</strong> — clients and providers have different fields in the same collection without <code>ALTER TABLE</code></li>
+        <li>✅ <strong style="color:#fff">Native geospatial</strong> — <code>2dsphere</code> index lets us query providers by geographic proximity natively</li>
+        <li>✅ <strong style="color:#fff">Document model fits chat</strong> — messages, offers, and metadata live in one document naturally</li>
+        <li>✅ <strong style="color:#fff">Motor async driver</strong> — plays perfectly with FastAPI's async/await model, no thread blocking</li>
+      </ul>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ AUTH ═══ -->
+  <section id="auth">
+    <h2>🔐 <span>Authentication</span></h2>
+    <p class="section-intro">Three-layer security: password hash → OTP email → JWT token. Trusted devices skip OTP to avoid friction on repeat logins. File: <code>backend/app/services/auth_service.py</code></p>
+
+    <h3>Login Flow</h3>
+    <div class="flow">
+      <div class="flow-step"><div class="flow-num">1</div><div class="flow-text"><strong>POST /api/auth/login</strong> — client sends email + password + device_token</div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div class="flow-text">Backend finds user by email, calls <code>verify_password()</code> using <strong>pbkdf2_sha256</strong> hash</div></div>
+      <div class="flow-step"><div class="flow-num">3</div><div class="flow-text">If device_token matches DB record → skip OTP, return JWT immediately</div></div>
+      <div class="flow-step"><div class="flow-num">4</div><div class="flow-text">Otherwise: generate 6-digit OTP, store in <code>otp_codes</code> with 5-min expiry, email it via Gmail SMTP</div></div>
+      <div class="flow-step"><div class="flow-num">5</div><div class="flow-text"><strong>POST /api/auth/verify-otp</strong> — client sends email + code. Backend validates, deletes OTP, creates JWT + new device_token</div></div>
+      <div class="flow-step"><div class="flow-num">6</div><div class="flow-text">Frontend stores JWT in <code>localStorage</code>, attaches it to every request via Axios interceptor</div></div>
+    </div>
+
+    <h3>JWT Guard — how protected routes work</h3>
+    <div class="card card-blue">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7)">Every protected route has <code>current_user: dict = Depends(get_current_user)</code>. FastAPI calls this function automatically before the route handler runs.</p>
+      <pre><code><span class="cm"># backend/app/dependencies.py</span>
+<span class="kw">async def</span> <span class="fn">get_current_user</span>(token = Depends(oauth2_scheme)):
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    user_id = payload.get(<span class="str">"sub"</span>)
+    user = <span class="kw">await</span> db.users.find_one({<span class="str">"_id"</span>: ObjectId(user_id)})
+    <span class="kw">return</span> user  <span class="cm"># injected into route handler</span></code></pre>
+    </div>
+
+    <h3>Frontend — AuthContext</h3>
+    <div class="card">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:10px">On every app load, calls <code>GET /api/auth/me</code> to get fresh user data (not stale localStorage). This also refreshes the provider profile so remote/in-place logic is always correct.</p>
+      <pre><code><span class="cm"># frontend/src/context/AuthContext.jsx</span>
+useEffect(() => {
+  <span class="kw">const</span> token = localStorage.getItem(<span class="str">'access_token'</span>);
+  <span class="kw">if</span> (!token) { dispatch({ type: <span class="str">'LOADED'</span> }); <span class="kw">return</span>; }
+  api.get(<span class="str">'/auth/me'</span>)
+    .then(res => dispatch({ type: <span class="str">'LOGIN'</span>, payload: res.data }))
+    .catch(() => { <span class="cm">/* use cached user or clear token */</span> });
+}, []);</code></pre>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ PROVIDERS ═══ -->
+  <section id="providers">
+    <h2>📍 Providers <span>& Map</span></h2>
+    <p class="section-intro">In-place providers have a GPS location stored as GeoJSON. Remote providers (IT, Tutoring, etc.) have no location — they appear in a separate "Remote" panel. File: <code>backend/app/routers/providers.py</code></p>
+
+    <table>
+      <tr><th>Endpoint</th><th>What it does</th></tr>
+      <tr><td><code>GET /api/providers/all_providers</code></td><td>Returns in-place providers, supports <code>?category=</code> and <code>?search=</code> filters. Paginated.</td></tr>
+      <tr><td><code>GET /api/providers/remote</code></td><td>Returns remote providers (job_type = "remote"). Same filters.</td></tr>
+      <tr><td><code>GET /api/providers/geocode?q=</code></td><td>Proxy to Nominatim OpenStreetMap geocoder. Avoids CORS from frontend.</td></tr>
+      <tr><td><code>GET /api/providers/route</code></td><td>Proxy to OSRM for road routing between two GPS points. Returns GeoJSON polyline.</td></tr>
+      <tr><td><code>PUT /api/providers/location</code></td><td>Provider updates their GPS coordinates in <code>provider_profiles</code>.</td></tr>
+      <tr><td><code>POST /api/providers/toggle-availability</code></td><td>Flips <code>is_available</code> boolean on the provider profile.</td></tr>
+    </table>
+
+    <h3>Geospatial Index</h3>
+    <div class="card card-green">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7)">On startup, <code>database.py</code> creates a <strong>2dsphere index</strong> on <code>provider_profiles.location</code>. This lets MongoDB run efficient radius queries like "find all providers within 10km of this point" using the GeoJSON Point format.</p>
+      <pre><code><span class="cm"># The location field stored in provider_profiles:</span>
+location: {
+  type: <span class="str">"Point"</span>,
+  coordinates: [<span class="num">10.1815</span>, <span class="num">36.8065</span>]  <span class="cm"># [longitude, latitude]</span>
+}</code></pre>
+      <p style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:8px">⚠️ MongoDB stores [longitude, latitude] — opposite of Leaflet which uses [latitude, longitude]. Easy interview trap!</p>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ REQUESTS ═══ -->
+  <section id="requests">
+    <h2>📬 Request <span>System</span></h2>
+    <p class="section-intro">The request is the core entity. Its <code>status</code> field drives the whole app. File: <code>backend/app/services/request_service.py</code></p>
+
+    <h3>Status State Machine</h3>
+    <div class="arch" style="font-size:14px;line-height:2.5">
+      <span class="green">pending</span> <span class="arrow">──accept──▶</span> <span class="blue">in_progress</span> <span class="arrow">──both confirm──▶</span> <span class="purple">confirmed</span> <span class="arrow">──provider clicks──▶</span> <span class="green">completed</span><br/>
+      <span class="green">pending</span> <span class="arrow">──reject──▶</span> <span class="yellow">rejected</span><br/>
+      <span class="green">pending</span> <span class="arrow">──client cancel──▶</span> <span class="yellow">cancelled</span>
+    </div>
+
+    <table>
+      <tr><th>Status</th><th>Meaning</th><th>Who can act</th></tr>
+      <tr><td><span class="badge badge-yellow">pending</span></td><td>Client sent request, waiting for provider</td><td>Provider: accept/reject | Client: cancel</td></tr>
+      <tr><td><span class="badge badge-green">in_progress</span></td><td>Provider accepted, chat is open</td><td>Both: chat, negotiate offers</td></tr>
+      <tr><td><span class="badge badge-blue">confirmed</span></td><td>Both confirmed the agreed price</td><td>Provider: mark complete</td></tr>
+      <tr><td><span class="badge badge-purple">completed</span></td><td>Job done, rating available</td><td>Both: submit rating | Either: report</td></tr>
+      <tr><td><span class="badge badge-red">rejected</span></td><td>Provider said no</td><td>—</td></tr>
+      <tr><td><span class="badge badge-red">cancelled</span></td><td>Client cancelled before acceptance</td><td>—</td></tr>
+    </table>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ CHAT ═══ -->
+  <section id="chat">
+    <h2>💬 Chat <span>& WebSocket</span></h2>
+    <p class="section-intro">Real-time bidirectional communication using native WebSockets. One WS connection per chat room. The same WS also carries location pings and job-completion events. File: <code>backend/app/routers/chat.py</code> + <code>websockets/manager.py</code></p>
+
+    <h3>ConnectionManager — How rooms work</h3>
+    <div class="card card-blue">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:10px">The <code>ConnectionManager</code> is a Python class with a dictionary: <code>{ request_id: [websocket1, websocket2] }</code>. When a message arrives from one socket, <code>broadcast()</code> sends it to all sockets in the same room.</p>
+      <pre><code><span class="kw">class</span> <span class="fn">ConnectionManager</span>:
+    <span class="kw">def</span> __init__(self):
+        self.active_connections: dict[str, list[WebSocket]] = {}
+
+    <span class="kw">async def</span> <span class="fn">broadcast</span>(self, request_id, message):
+        <span class="kw">for</span> conn <span class="kw">in</span> self.active_connections.get(request_id, []):
+            <span class="kw">await</span> conn.send_json(message)</code></pre>
+    </div>
+
+    <h3>WS Message Types</h3>
+    <table>
+      <tr><th>type</th><th>Sent by</th><th>What happens</th></tr>
+      <tr><td><code>text</code></td><td>Either party</td><td>Saved to DB, broadcast to room</td></tr>
+      <tr><td><code>typing</code></td><td>Either party</td><td>Broadcast only (not saved), shows "..." indicator</td></tr>
+      <tr><td><code>offer</code></td><td>Provider (after HTTP POST)</td><td>Broadcast saved offer message to both screens</td></tr>
+      <tr><td><code>offer_update</code></td><td>Client (after HTTP PATCH)</td><td>Broadcast updated offer status (accepted/negotiating)</td></tr>
+      <tr><td><code>confirmed</code></td><td>Either (after HTTP PATCH)</td><td>Broadcast — triggers Summary Card on both screens</td></tr>
+      <tr><td><code>job_completed</code></td><td>Provider</td><td>Broadcast — client sees Rating Card appear instantly</td></tr>
+      <tr><td><code>provider_location</code></td><td>Provider (TrackingPage)</td><td>Broadcast GPS — client marker moves on map</td></tr>
+      <tr><td><code>client_location</code></td><td>Client (TrackingPage)</td><td>Broadcast stored location — provider sees destination</td></tr>
+      <tr><td><code>cancelled</code></td><td>Either</td><td>Broadcast — both navigate away in 3s</td></tr>
+    </table>
+
+    <h3>Price Negotiation Flow</h3>
+    <div class="flow">
+      <div class="flow-step"><div class="flow-num">1</div><div class="flow-text">Provider opens offer panel → sets amount → <strong>POST /api/chat/{id}/offer</strong> (HTTP)</div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div class="flow-text">Backend saves offer to <code>chat_messages</code> as <code>message_type: "offer"</code></div></div>
+      <div class="flow-step"><div class="flow-num">3</div><div class="flow-text">Frontend sends <code>{type: "offer", message: savedOffer}</code> via WS → both screens show the offer card</div></div>
+      <div class="flow-step"><div class="flow-num">4</div><div class="flow-text">Client clicks Accept → <strong>PATCH /api/chat/{id}/offer/{msgId}</strong> → backend updates <code>agreed_price</code> in chat_room</div></div>
+      <div class="flow-step"><div class="flow-num">5</div><div class="flow-text">WS broadcasts <code>offer_update</code> → Confirm button appears for both</div></div>
+      <div class="flow-step"><div class="flow-num">6</div><div class="flow-text">Both click Confirm → <strong>PATCH /api/chat/{id}/confirm</strong> → when both confirmed, status → "confirmed"</div></div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ RATINGS ═══ -->
+  <section id="ratings">
+    <h2>⭐ <span>Ratings</span></h2>
+    <p class="section-intro">Both parties rate each other after completion. Provider's <code>avg_rating</code> and <code>total_jobs</code> update automatically. File: <code>backend/app/services/rating_service.py</code></p>
+
+    <div class="card card-yellow">
+      <h4>How avg_rating updates</h4>
+      <p style="font-size:14px;color:rgba(255,255,255,0.7)">When a rating is submitted, the backend uses MongoDB's <code>$inc</code> and <code>$set</code> to recalculate the running average on the <code>provider_profiles</code> document. No need to re-query all ratings — it's maintained incrementally.</p>
+    </div>
+
+    <h3>UI Trigger (ChatPage)</h3>
+    <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:12px">When <code>isCompleted && !hasRated</code> → show 5-star rating card. On submit → <code>POST /api/ratings/</code>. On load (if already completed) → <code>GET /api/ratings/job/{id}</code> to check if current user already rated → set <code>hasRated = true</code> to skip card.</p>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ AI ═══ -->
+  <section id="ai">
+    <h2>🤖 AI <span>Features</span></h2>
+    <p class="section-intro">Three features powered by Groq (Llama 3.3 70B) + one using pure MongoDB. Files: <code>backend/app/services/ai_service.py</code> + <code>routers/ai.py</code></p>
+
+    <div class="grid3">
+      <div class="card card-green">
+        <h4>1. Client — AI Search</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Client types in Tunisian dialect → Groq understands → returns category, urgency, French description, price estimate, key points.</p>
+        <p style="font-size:12px;color:#4ADE80;margin-top:8px"><code>POST /api/ai/analyze-request</code></p>
+      </div>
+      <div class="card card-blue">
+        <h4>2. Provider — Price Stats</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">When offer panel opens → MongoDB aggregate on real <code>agreed_price</code> values from past completed jobs. Shows range + average. <strong>No AI</strong> — real data.</p>
+        <p style="font-size:12px;color:#60A5FA;margin-top:8px"><code>GET /api/ai/price-stats/{category}</code></p>
+      </div>
+      <div class="card card-purple">
+        <h4>3. Moderator — Dispute</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">User clicks Report → fills reason → Groq reads full chat history → returns timeline, evidence for each side, recommendation, confidence score.</p>
+        <p style="font-size:12px;color:#A78BFA;margin-top:8px"><code>POST /api/ai/report</code></p>
+      </div>
+    </div>
+
+    <h3>AI Search + Provider Recommendations</h3>
+    <div class="card">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:12px">After the AI call resolves, the frontend fetches providers for the detected category and ranks them using a score:</p>
+      <pre><code><span class="cm">// In-place providers — distance matters</span>
+distScore  = max(0, 1 - distance / 20000)   <span class="cm">// 20km = max range</span>
+qualScore  = (avg_rating / 5) * 0.7 + min(total_jobs / 50, 1) * 0.3
+finalScore = distScore * 0.6 + qualScore * 0.4
+
+<span class="cm">// Remote providers — no distance, pure quality</span>
+finalScore = qualScore</code></pre>
+      <p style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:10px">Top 3 in-place + top 3 remote shown as clickable cards. Tapping one opens the request modal pre-filled with the AI-generated description.</p>
+    </div>
+
+    <h3>Why Groq instead of OpenAI / Gemini?</h3>
+    <div class="card card-green">
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px;color:rgba(255,255,255,0.7)">
+        <li>✅ Completely <strong style="color:#fff">free tier</strong> — 14,400 requests/day, no credit card</li>
+        <li>✅ <strong style="color:#fff">Fastest inference</strong> available — Llama 3.3 70B in ~0.5s</li>
+        <li>✅ Handles <strong style="color:#fff">Tunisian dialect</strong> well — multilingual model trained on Arabic + French</li>
+        <li>❌ Gemini: free tier quota was 0 for our project type</li>
+        <li>❌ OpenAI: paid only</li>
+      </ul>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ REACT ═══ -->
+  <section id="react">
+    <h2>⚛️ React <span>Architecture</span></h2>
+    <p class="section-intro">The app uses two global contexts, protected routes, and the Axios interceptor pattern. No Redux — Context API is enough for this scale.</p>
+
+    <div class="grid2">
+      <div class="card card-green">
+        <h4>AuthContext</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Stores <code>user</code> object and <code>token</code>. On mount: calls <code>/auth/me</code> to get fresh data. <code>login()</code> saves token to localStorage. <code>logout()</code> clears everything. Any component calls <code>useAuth()</code>.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>ThemeContext</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Stores <code>theme</code> ("dark" | "light"). On change: sets <code>data-theme</code> attribute on <code>&lt;html&gt;</code>. CSS targets <code>[data-theme="light"]</code> selectors to override colors. Persisted in localStorage.</p>
+      </div>
+    </div>
+
+    <h3>Axios Interceptor</h3>
+    <div class="card card-blue">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:10px">Every API call automatically gets the JWT token attached — no need to add it manually in every component.</p>
+      <pre><code><span class="cm"># frontend/src/api/axios.js</span>
+<span class="kw">const</span> api = axios.create({ baseURL: <span class="str">'http://localhost:8000/api'</span> });
+api.interceptors.request.use(config => {
+  <span class="kw">const</span> token = localStorage.getItem(<span class="str">'access_token'</span>);
+  <span class="kw">if</span> (token) config.headers.Authorization = <span class="str">`Bearer </span>${token}<span class="str">`</span>;
+  <span class="kw">return</span> config;
+});</code></pre>
+    </div>
+
+    <h3>ProtectedRoute</h3>
+    <div class="card">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7)">Wraps routes that require login. If <code>user</code> is null and auth has loaded → redirect to <code>/login</code>. Used in <code>App.jsx</code> for <code>/map</code>, <code>/chat/:id</code>, <code>/tracking/:id</code>, etc.</p>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ MAP PAGE ═══ -->
+  <section id="map-page">
+    <h2>🗺 Map <span>Page</span></h2>
+    <p class="section-intro">The most complex page. Different UI for client, in-place provider, and remote provider. File: <code>frontend/src/pages/Map.jsx</code></p>
+
+    <table>
+      <tr><th>User Type</th><th>What they see</th></tr>
+      <tr><td>Client (no location yet)</td><td>Location picker overlay — search or click on map</td></tr>
+      <tr><td>Client (location set)</td><td>Full map with provider markers + search bar + AI ✨ button + category filter</td></tr>
+      <tr><td>In-place Provider</td><td>Same map but no request panel — they appear as a marker</td></tr>
+      <tr><td>Remote Provider</td><td>Completely different UI: "Remote Hub" with availability toggle + incoming requests list</td></tr>
+    </table>
+
+    <h3>AI Search Flow on Map</h3>
+    <div class="flow">
+      <div class="flow-step"><div class="flow-num">1</div><div class="flow-text">Client taps ✨ → input expands</div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div class="flow-text">Types in any language (e.g. <em>"3andi biba mtaa9a"</em>)</div></div>
+      <div class="flow-step"><div class="flow-num">3</div><div class="flow-text"><code>POST /api/ai/analyze-request</code> → Groq returns category, description, price range</div></div>
+      <div class="flow-step"><div class="flow-num">4</div><div class="flow-text">Map auto-filters to detected category. Description pre-filled in request form.</div></div>
+      <div class="flow-step"><div class="flow-num">5</div><div class="flow-text">In parallel: fetch in-place + remote providers → rank by score → show top 3 of each</div></div>
+      <div class="flow-step"><div class="flow-num">6</div><div class="flow-text">Client taps a suggestion → request modal opens, description already filled → one tap to send</div></div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ TRACKING ═══ -->
+  <section id="tracking">
+    <h2>📡 Real-Time <span>Tracking</span></h2>
+    <p class="section-intro">Taxi-style GPS tracking after request acceptance. Uses the same WebSocket channel as chat — no extra infrastructure needed. File: <code>frontend/src/pages/TrackingPage.jsx</code></p>
+
+    <div class="grid2">
+      <div class="card card-green">
+        <h4>Provider side</h4>
+        <ul style="font-size:13px;color:rgba(255,255,255,0.65);list-style:none;display:flex;flex-direction:column;gap:6px">
+          <li>📡 <code>navigator.geolocation.watchPosition</code> fires on GPS change</li>
+          <li>⏱ Throttled to 1 send per 3 seconds</li>
+          <li>💓 Heartbeat every 4s resends last position (for static GPS in dev tools)</li>
+          <li>📤 Sends <code>{type:"provider_location", lat, lng, provider_name}</code> via WS</li>
+        </ul>
+      </div>
+      <div class="card card-blue">
+        <h4>Client side</h4>
+        <ul style="font-size:13px;color:rgba(255,255,255,0.65);list-style:none;display:flex;flex-direction:column;gap:6px">
+          <li>📍 Reads stored location from <code>localStorage.client_location</code></li>
+          <li>📤 Sends <code>{type:"client_location", lat, lng}</code> once on connect</li>
+          <li>📡 Receives <code>provider_location</code> → updates provider marker on map</li>
+          <li>🔔 When distance &lt; 500m → proximity banner appears</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Route Drawing (OSRM)</h3>
+    <div class="card">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7)">When both positions are known → <code>GET /api/providers/route?slat=&slng=&elat=&elng=</code>. Backend proxies to OSRM public API, returns GeoJSON polyline coordinates. Frontend draws a green <code>&lt;Polyline&gt;</code> on the Leaflet map. Re-fetches when provider moves &gt;50m.</p>
+    </div>
+
+    <h3>Haversine Distance</h3>
+    <div class="card card-green">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:10px">Used to calculate straight-line distance between two GPS points in metres. Used for: proximity notification (&lt;500m), AI provider ranking (distance score), and live distance chip on tracking page.</p>
+      <pre><code><span class="kw">function</span> <span class="fn">haversine</span>(lat1, lng1, lat2, lng2) {
+  <span class="kw">const</span> R = <span class="num">6371000</span>; <span class="cm">// Earth radius in metres</span>
+  <span class="kw">const</span> toRad = d => d * Math.PI / <span class="num">180</span>;
+  <span class="kw">const</span> dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  <span class="kw">const</span> a = Math.sin(dLat/<span class="num">2</span>)**<span class="num">2</span>
+            + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2))
+            * Math.sin(dLng/<span class="num">2</span>)**<span class="num">2</span>;
+  <span class="kw">return</span> R * <span class="num">2</span> * Math.atan2(Math.sqrt(a), Math.sqrt(<span class="num">1</span>-a));
+}</code></pre>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ THEME ═══ -->
+  <section id="theme">
+    <h2>🎨 Theme <span>System</span></h2>
+    <p class="section-intro">Dark/light mode without any library. Pure CSS attribute selectors + React context. Files: <code>ThemeContext.jsx</code> + <code>index.css</code></p>
+
+    <div class="card card-purple">
+      <p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:10px">ThemeContext sets <code>document.documentElement.setAttribute('data-theme', theme)</code>. CSS then targets <code>[data-theme="light"]</code> to override every color.</p>
+      <pre><code><span class="cm">/* Key insight: word-boundary selector [class~=] vs substring [class*=] */</span>
+[data-theme="light"] [class~="text-white"]    { color: #1E293B !important; }
+[data-theme="light"] [class~="bg-[#22C55E]"][class~="text-white"] {
+  color: #ffffff !important; <span class="cm">/* restore white text on green buttons */</span>
+}</code></pre>
+      <p style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:8px">⚠️ Critical: <code>[class~=]</code> matches whole class names only. <code>[class*=]</code> matches substrings — it would accidentally match <code>hover:bg-[#22C55E]</code> and break hover states (like the burger menu). This caused a real bug we fixed.</p>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ SECURITY ═══ -->
+  <section id="security">
+    <h2>🛡 <span>Security</span></h2>
+    <div class="grid2">
+      <div class="card card-green">
+        <h4>Password Storage</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Passwords hashed with <strong>pbkdf2_sha256</strong> (passlib). Never stored in plain text. Never returned in API responses.</p>
+      </div>
+      <div class="card card-blue">
+        <h4>JWT Tokens</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">HS256 signed. Contain only <code>user_id</code> (sub claim). Expire in 30 minutes (or 30 days with "remember me").</p>
+      </div>
+      <div class="card card-yellow">
+        <h4>OTP</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">6-digit random number. Stored in DB with 5-minute TTL. Deleted immediately after use. Prevents replay attacks.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>Authorization Checks</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Every service function checks that the requesting user is actually the client or provider of that specific request — not just any logged-in user.</p>
+      </div>
+      <div class="card card-red">
+        <h4>Disposable Email Block</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">Registration checks email domain against a list of known disposable email providers. Prevents fake accounts.</p>
+      </div>
+      <div class="card">
+        <h4>CORS</h4>
+        <p style="font-size:13px;color:rgba(255,255,255,0.65)">FastAPI CORS middleware only allows <code>localhost:5173</code> (frontend). In production this would be the real domain.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ FLOW ═══ -->
+  <section id="flow">
+    <h2>🔄 Full <span>User Flow</span></h2>
+    <p class="section-intro">End-to-end — every step and which file handles it.</p>
+
+    <table>
+      <tr><th>Step</th><th>User Action</th><th>File(s)</th></tr>
+      <tr><td>1</td><td>Register (fill form)</td><td><code>Register.jsx</code> → <code>auth_service.py → register_user()</code></td></tr>
+      <tr><td>2</td><td>Login → get OTP email</td><td><code>Login.jsx</code> → <code>auth_service.py → login_user()</code></td></tr>
+      <tr><td>3</td><td>Enter OTP code</td><td><code>Login.jsx</code> → <code>auth_service.py → verify_otp()</code></td></tr>
+      <tr><td>4</td><td>Set location on map</td><td><code>Map.jsx</code> (overlay picker) → <code>localStorage.client_location</code></td></tr>
+      <tr><td>5</td><td>Type need in AI bar ✨</td><td><code>Map.jsx → handleAiSearch()</code> → <code>ai_service.py → analyze_request()</code></td></tr>
+      <tr><td>6</td><td>Tap provider → send request</td><td><code>Map.jsx → handleSendRequest()</code> → <code>request_service.py → create_request()</code></td></tr>
+      <tr><td>7</td><td>Provider accepts</td><td><code>Requests.jsx → handleAccept()</code> → <code>request_service.py → accept_request()</code></td></tr>
+      <tr><td>8</td><td>Chat + negotiate</td><td><code>ChatPage.jsx</code> ↔ <code>chat.py WebSocket</code> ↔ <code>chat_service.py</code></td></tr>
+      <tr><td>9</td><td>Provider sends price offer</td><td><code>ChatPage.jsx → handleSendOffer()</code> → <code>POST /api/chat/{id}/offer</code></td></tr>
+      <tr><td>10</td><td>Client accepts offer, both confirm</td><td><code>PATCH /api/chat/{id}/offer/{msgId}</code> + <code>PATCH /api/chat/{id}/confirm</code></td></tr>
+      <tr><td>11</td><td>Track provider on map</td><td><code>TrackingPage.jsx</code> ↔ WS <code>provider_location</code> / <code>client_location</code> messages</td></tr>
+      <tr><td>12</td><td>Provider marks complete</td><td><code>ChatPage.jsx → handleComplete()</code> → <code>completeRequest()</code> + WS <code>job_completed</code></td></tr>
+      <tr><td>13</td><td>Both rate each other</td><td><code>ChatPage.jsx → handleSubmitRating()</code> → <code>POST /api/ratings/</code></td></tr>
+      <tr><td>14</td><td>Report dispute (optional)</td><td><code>Requests.jsx → handleReport()</code> → <code>ai_service.py → analyze_dispute()</code></td></tr>
+    </table>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ═══ Q&A ═══ -->
+  <section id="qa">
+    <h2>❓ Interview <span>Q&A</span></h2>
+    <p class="section-intro">Common technical questions about this project — with honest, direct answers.</p>
+
+    <h3>Architecture & Choices</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: Why FastAPI instead of Django or Node.js?</div>
+      <div class="qa-a">FastAPI is async-native which is critical for WebSockets and DB I/O. It auto-generates docs. Python is better for AI integration than Node. Django is synchronous and heavier — not ideal for real-time features.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: Why MongoDB instead of PostgreSQL?</div>
+      <div class="qa-a">Providers and clients have different fields — MongoDB's flexible schema avoids complex joins. The 2dsphere geospatial index makes proximity queries trivial. For a chat app, document model fits message storage naturally.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: Why WebSockets instead of polling or Server-Sent Events?</div>
+      <div class="qa-a">WebSockets are bidirectional — both client and provider can send messages. SSE is server-only. Polling wastes bandwidth (we had a polling fallback initially, then replaced it). WS is the right tool for chat.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: How does the app handle JWT token expiry?</div>
+      <div class="qa-a">The token expires in 30 minutes by default. The frontend doesn't refresh it automatically — if a request fails with 401, the user is redirected to login. "Remember me" extends the token to 30 days.</div>
+    </div>
+
+    <h3>Real-Time & WebSocket</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: What happens if the WebSocket disconnects?</div>
+      <div class="qa-a">The <code>ws.onclose</code> handler sets <code>isConnected = false</code> which shows a "Disconnected" indicator. The user can refresh to reconnect. We don't implement auto-reconnect in this version.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: How does the ConnectionManager handle multiple tabs?</div>
+      <div class="qa-a">Each tab opens its own WebSocket which gets added to the same room array. <code>broadcast()</code> sends to all of them. The limit is 10 connections per room (set in chat.py).</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: Why is the WS authenticated via URL token (<code>?token=</code>) and not headers?</div>
+      <div class="qa-a">The WebSocket API in browsers doesn't support custom headers during the handshake. Passing the JWT as a query parameter is the standard workaround. The backend validates it immediately on connection and closes if invalid.</div>
+    </div>
+
+    <h3>Security</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: Is the JWT token safe in localStorage?</div>
+      <div class="qa-a">It's vulnerable to XSS attacks. HttpOnly cookies are safer. For this project localStorage is acceptable since there's no rich text input where scripts could be injected. In production we'd switch to secure HttpOnly cookies.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: What stops a client from calling /api/chat/{id}/confirm on someone else's request?</div>
+      <div class="qa-a">Every service function checks <code>str(request["client_id"]) == user_id</code> before acting. If the user isn't a party to that request, they get a 403 Forbidden. The JWT ensures we know who the user is.</div>
+    </div>
+
+    <h3>AI Features</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: How does the AI handle Tunisian dialect?</div>
+      <div class="qa-a">Llama 3.3 70B is a multilingual model trained on Arabic and French data. Tunisian is a mix of both plus Berber words. The model understands the intent even with mixed languages. We tested with "3andi biba mtaa9a" → correctly returned Plumbing.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: Why not use AI for price suggestions too?</div>
+      <div class="qa-a">AI doesn't know Tunisian market rates. A plumber in Tunis costs very differently from a plumber in Paris. So instead we aggregate real <code>agreed_price</code> values from completed jobs on our own platform — actual local market data that gets more accurate as the platform grows.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: What if the AI returns invalid JSON?</div>
+      <div class="qa-a">We use <code>response_format: { type: "json_object" }</code> in the Groq API call which forces valid JSON output. We also have a <code>_strip_fences()</code> function that removes markdown code fences if Groq adds them.</div>
+    </div>
+
+    <h3>Database</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: What is a 2dsphere index and why do you need it?</div>
+      <div class="qa-a">It's a MongoDB index for geospatial data stored as GeoJSON. It lets MongoDB run queries like "find all providers within 10km of this point" efficiently. Without it, MongoDB would have to calculate distances for every single provider document — very slow.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: Why do you store [longitude, latitude] instead of [latitude, longitude]?</div>
+      <div class="qa-a">GeoJSON standard uses [longitude, latitude] order. MongoDB follows GeoJSON. Leaflet uses [latitude, longitude]. So we always have to swap when passing coordinates between the map and the database — a common source of bugs.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: How does Motor differ from PyMongo?</div>
+      <div class="qa-a">Motor is the async version of PyMongo. Regular PyMongo blocks the thread during DB operations. Motor uses <code>async/await</code> so FastAPI can handle other requests while waiting for MongoDB — essential for a real-time app.</div>
+    </div>
+
+    <h3>Frontend</h3>
+
+    <div class="qa">
+      <div class="qa-q">Q: Why use Context API instead of Redux?</div>
+      <div class="qa-a">Redux adds complexity (actions, reducers, store). For two pieces of global state (user + theme), Context API is sufficient. Redux becomes worth it when you have many unrelated pieces of state across many components.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: What is the Axios interceptor doing?</div>
+      <div class="qa-a">It's middleware that runs before every request. It reads the JWT from localStorage and adds it as an Authorization header. Without it, we'd have to manually add the token to every single API call in every component.</div>
+    </div>
+    <div class="qa">
+      <div class="qa-q">Q: How does the theme system work without a CSS library?</div>
+      <div class="qa-a">ThemeContext sets <code>data-theme="light"</code> on the html element. CSS uses <code>[data-theme="light"] [class~="text-white"]</code> to override Tailwind classes. The <code>~=</code> selector matches whole class names only — critical to avoid matching hover variants.</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="card" style="background:rgba(34,197,94,0.05);border-color:rgba(34,197,94,0.2);text-align:center;padding:32px">
+      <div style="font-size:32px;margin-bottom:12px">🎯</div>
+      <h3 style="color:#22C55E;margin:0 0 8px">You built this. You know it.</h3>
+      <p style="color:rgba(255,255,255,0.5);font-size:14px">Every design decision in this project has a reason. When they ask "why did you choose X?" — you have an answer. Good luck, you got this. 💪</p>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>

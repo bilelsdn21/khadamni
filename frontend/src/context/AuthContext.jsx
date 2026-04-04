@@ -1,4 +1,5 @@
 import { createContext, useReducer, useEffect } from 'react';
+import api from '../api/axios';
 
 const AuthContext = createContext(null);
 
@@ -24,15 +25,30 @@ function authReducer(state, action) {
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
- useEffect(() => {
-  const token = localStorage.getItem('access_token');
-  const user = localStorage.getItem('user');
-  if (token && user) {
-    dispatch({ type: 'LOGIN', payload: JSON.parse(user) });
-  } else {
-    dispatch({ type: 'LOADED' });
-  }
-}, []);
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      dispatch({ type: 'LOADED' });
+      return;
+    }
+    // Refresh user from backend so stale localStorage data (e.g. job_type) is always current
+    api.get('/auth/me')
+      .then(res => {
+        const freshUser = res.data;
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        dispatch({ type: 'LOGIN', payload: freshUser });
+      })
+      .catch(() => {
+        // Token invalid/expired — fall back to cached user or clear session
+        const cached = localStorage.getItem('user');
+        if (cached) {
+          dispatch({ type: 'LOGIN', payload: JSON.parse(cached) });
+        } else {
+          localStorage.removeItem('access_token');
+          dispatch({ type: 'LOADED' });
+        }
+      });
+  }, []);
 
 
   const login = (user, accessToken, refreshToken) => {

@@ -181,9 +181,9 @@ export default function Login() {
             />
             <span className="text-sm text-white/60">Remember me</span>
           </label>
-          <Link to="/forgot-password" className="text-sm text-[#4ADE80] hover:underline transition">
+          <span className="text-sm text-white/25 cursor-not-allowed" title="Coming soon">
             Forgot password?
-          </Link>
+          </span>
         </div>
 
         {/* Submit */}

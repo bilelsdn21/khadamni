@@ -22,20 +22,23 @@ async def get_my_profile(user_id: str):
             user["provider_profile"] = profile
         
         # Aggregated stats for provider
-        ratings = await db.ratings.find({"provider_id": ObjectId(user_id)}).to_list(length=None)
+        ratings = await db.ratings.find({"rated_id": ObjectId(user_id)}).to_list(length=None)
         user["rating_avg"] = sum(r["score"] for r in ratings) / len(ratings) if ratings else 0
         user["total_reviews"] = len(ratings)
-        user["completed_jobs"] = await db.requests.count_documents({
+        user["completed_jobs"] = await db.service_requests.count_documents({
             "provider_id": ObjectId(user_id),
             "status": "completed"
         })
     else:
         # Aggregated stats for client
-        user["total_requests"] = await db.requests.count_documents({"client_id": ObjectId(user_id)})
-        user["active_requests"] = await db.requests.count_documents({
+        user["total_requests"] = await db.service_requests.count_documents({"client_id": ObjectId(user_id)})
+        user["active_requests"] = await db.service_requests.count_documents({
             "client_id": ObjectId(user_id),
-            "status": {"$in": ["pending", "accepted"]}
+            "status": {"$in": ["pending", "in_progress"]}
         })
+        ratings = await db.ratings.find({"rated_id": ObjectId(user_id)}).to_list(length=None)
+        user["rating_avg"] = sum(r["score"] for r in ratings) / len(ratings) if ratings else 0
+        user["total_reviews"] = len(ratings)
 
     return user
 
@@ -52,7 +55,7 @@ async def update_my_profile(user_id: str, role: str, data: dict):
     user_fields = {"first_name", "last_name", "phone", "latitude", "longitude", "avatar"}
 
     # Fields that belong to the provider_profiles collection
-    provider_fields = {"bio", "service_categories", "hourly_rate", "experience_years", "is_available"}
+    provider_fields = {"bio", "service_categories", "hourly_rate", "experience_years", "is_available", "job_type"}
 
     user_update = {k: v for k, v in data.items() if k in user_fields}
     provider_update = {k: v for k, v in data.items() if k in provider_fields}
@@ -63,24 +66,23 @@ async def update_my_profile(user_id: str, role: str, data: dict):
             {"$set": user_update}
         )
 
-    if provider_update and role == "provider":
-        # Also keep full_name in sync if name changed
+    if role == "provider":
         if "first_name" in user_update or "last_name" in user_update:
-            user = await db.users.find_one({"_id": ObjectId(user_id)})
-            provider_update["full_name"] = f"{user['first_name']} {user['last_name']}"
+            updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
+            provider_update["full_name"] = f"{updated_user['first_name']} {updated_user['last_name']}"
 
-        # Update location GeoJSON if coordinates changed
         if "latitude" in user_update and "longitude" in user_update:
-            provider_update["latitude"] = data["latitude"]
-            provider_update["longitude"] = data["longitude"]
+            provider_update["latitude"] = user_update["latitude"]
+            provider_update["longitude"] = user_update["longitude"]
             provider_update["location"] = {
                 "type": "Point",
-                "coordinates": [data["longitude"], data["latitude"]]
+                "coordinates": [user_update["longitude"], user_update["latitude"]]
             }
 
-        await db.provider_profiles.update_one(
-            {"user_id": ObjectId(user_id)},
-            {"$set": provider_update}
-        )
+        if provider_update:
+            await db.provider_profiles.update_one(
+                {"user_id": ObjectId(user_id)},
+                {"$set": provider_update}
+            )
 
     return "ok"

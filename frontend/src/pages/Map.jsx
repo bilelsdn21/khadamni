@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import axios from 'axios';
 import api from '../api/axios';
-import { createRequest } from '../api/request';
+import { createRequest, getMyRequests } from '../api/request';
 import SideDrawer from '../components/SideDrawer';
+import NotificationBell from '../components/NotificationBell';
+import ThemeToggle from '../components/ThemeToggle';
 import useAuth from '../hooks/useAuth';
+import { useTheme } from '../context/ThemeContext';
 import { Link } from 'react-router-dom';
 
 // ─── Custom Markers ───────────────────────────────────────────────────────────
@@ -124,11 +126,15 @@ const createProviderIcon = (provider) => {
     : 'Service';
 
   const iconUrl = getServiceIconUrl(serviceName);
+  const isAvailable = provider.is_available !== false;
+  const dotColor = isAvailable ? '#22C55E' : '#94A3B8';
+  const dotShadow = isAvailable ? '0 0 6px rgba(34,197,94,0.9)' : 'none';
 
   const htmlString = `
     <div class="group flex flex-col items-center justify-center -mt-8 cursor-pointer relative z-10 w-24 h-24">
       <div class="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-[0_8px_16px_rgba(0,0,0,0.6)] transition-transform duration-300 transform group-hover:scale-110 group-hover:-translate-y-1 z-20 border-[3px] border-white relative overflow-hidden group-hover:shadow-[0_4px_25px_rgba(255,255,255,0.4)]">
         <img src="${iconUrl}" alt="${serviceName}" class="w-8 h-8 object-contain" />
+        <div style="position:absolute;bottom:1px;right:1px;width:10px;height:10px;border-radius:50%;background:${dotColor};border:2px solid white;box-shadow:${dotShadow};"></div>
       </div>
       <div class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-white transition-transform duration-300 group-hover:-translate-y-1 -mt-[1px] z-10 drop-shadow-md"></div>
       <div class="mt-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#1E293B]/90 text-white shadow-sm whitespace-nowrap uppercase tracking-wider relative z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">${serviceName}</div>
@@ -148,11 +154,23 @@ const createProviderIcon = (provider) => {
 
 export default function Map() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const isProvider = user?.role === 'provider';
+  const isRemoteProvider = isProvider && user?.provider_profile?.job_type === 'remote';
+  const tileUrl = theme === 'light'
+    ? 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png'
+    : 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
+  const providerHasLocation = isProvider && user?.provider_profile?.latitude && user?.provider_profile?.longitude;
   const [providers, setProviders] = useState([]);
-  const [userLocation, setUserLocation] = useState([36.737232, 3.086472]);
-  const [locationConfirmed, setLocationConfirmed] = useState(false);
-  const [locating, setLocating] = useState(false);
+  const savedClientLocation = (() => {
+    try { const s = localStorage.getItem('client_location'); return s ? JSON.parse(s) : null; } catch { return null; }
+  })();
+  const [userLocation, setUserLocation] = useState(
+    providerHasLocation
+      ? [user.provider_profile.latitude, user.provider_profile.longitude]
+      : savedClientLocation || [36.737232, 3.086472]
+  );
+  const [locationConfirmed, setLocationConfirmed] = useState(isProvider || !!savedClientLocation);
   const [pickingLocation, setPickingLocation] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -160,68 +178,142 @@ export default function Map() {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [requestDescription, setRequestDescription] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [pendingProviderIds, setPendingProviderIds] = useState(new Set());
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('in_place'); // 'in_place' | 'remote'
+  const [remoteProviders, setRemoteProviders] = useState([]);
+  const [loadingRemote, setLoadingRemote] = useState(false);
+  const [remoteSearch, setRemoteSearch] = useState('');
+  const [providerPage, setProviderPage] = useState(1);
+  const [providerTotal, setProviderTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => {
     const saved = localStorage.getItem('recent_map_searches');
     return saved ? JSON.parse(saved) : [];
   });
   const [isSearching, setIsSearching] = useState(false);
+  const [locationSearchResults, setLocationSearchResults] = useState([]);
+  // AI search bar (clients only)
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [aiRemoteSuggestions, setAiRemoteSuggestions] = useState([]);
+
+  const REMOTE_CATEGORIES = new Set(['IT Support', 'Tutoring', 'Cooking', 'Delivery', 'Other']);
   const [overlayQuery, setOverlayQuery] = useState('');
   const [overlayResults, setOverlayResults] = useState([]);
   const [overlayPicked, setOverlayPicked] = useState(null);
+  const [overlayMapTarget, setOverlayMapTarget] = useState([36.737232, 3.086472]);
 
-  const handleOverlaySearch = async (val) => {
+  // ── Remote Hub state (only used when isRemoteProvider) ──────────────────────
+  const [hubAvailable, setHubAvailable] = useState(user?.provider_profile?.is_available ?? true);
+  const [hubRequests, setHubRequests] = useState([]);
+  const [toggling, setToggling] = useState(false);
+
+  const handleOverlaySearch = (val) => {
     setOverlayQuery(val);
-    if (val.length < 2) {
-      setOverlayResults([]);
-      return;
-    }
-    try {
-      const res = await api.get(`/providers/all_providers?search=${val}&include_offline=true`);
-      setOverlayResults(res.data);
-    } catch (err) {
-      console.error(err);
-    }
+    if (val.length < 2) { setOverlayResults([]); return; }
+    clearTimeout(window._overlaySearchTimer);
+    window._overlaySearchTimer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/providers/geocode?q=${encodeURIComponent(val)}`);
+        setOverlayResults(res.data);
+      } catch (err) {
+        console.error(err);
+      }
+    }, 400);
   };
 
   useEffect(() => {
     localStorage.setItem('recent_map_searches', JSON.stringify(recentSearches.slice(0, 5)));
   }, [recentSearches]);
 
-  const loadProviders = async (category = 'All') => {
+  const loadProviders = async (category = 'All', page = 1, append = false) => {
     try {
-      const res = await api.get(`/providers/all_providers${category !== 'All' ? `?category=${category}` : ''}`);
-      const dbProviders = res.data.providers || res.data;
-      setProviders(dbProviders);
+      const params = new URLSearchParams({ page, per_page: 30 });
+      if (category !== 'All') params.set('category', category);
+      const res = await api.get(`/providers/all_providers?${params}`);
+      const { providers: list, total } = res.data;
+      setProviders(prev => append ? [...prev, ...list] : list);
+      setProviderTotal(total);
+      setProviderPage(page);
     } catch (err) {
       console.error(err);
     }
   };
 
   useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
-      (err) => console.error('Location denied', err)
-    );
-    loadProviders(categoryFilter);
+    loadProviders(categoryFilter, 1, false);
   }, [categoryFilter]);
 
-  // Debounced search for DB
+  useEffect(() => {
+    if (viewMode !== 'remote' || isProvider) return;
+    setLoadingRemote(true);
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (categoryFilter !== 'All') params.set('category', categoryFilter);
+      if (remoteSearch.trim()) params.set('search', remoteSearch.trim());
+      const qs = params.toString();
+      api.get(`/providers/remote${qs ? `?${qs}` : ''}`)
+        .then(res => setRemoteProviders(res.data))
+        .catch(() => {})
+        .finally(() => setLoadingRemote(false));
+    }, remoteSearch ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [viewMode, categoryFilter, remoteSearch]);
+
+  useEffect(() => {
+    if (isProvider) return;
+    getMyRequests().then(res => {
+      const ids = new Set(
+        res.data
+          .filter(r => r.status === 'pending')
+          .map(r => r.provider_id)
+      );
+      setPendingProviderIds(ids);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isRemoteProvider) return;
+    const fetch = () => getMyRequests().then(res => setHubRequests(res.data)).catch(() => {});
+    fetch();
+    const interval = setInterval(fetch, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSelectPlace = (place) => {
+    const loc = [parseFloat(place.lat), parseFloat(place.lon)];
+    setPendingLocation(loc);
+    setSearchQuery(place.display_name.split(',').slice(0, 2).join(','));
+    setSuggestionsOpen(false);
+    setLocationSearchResults([]);
+  };
+
+  // Debounced search for DB + Nominatim places
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) {
       setSearchResults([]);
+      setLocationSearchResults([]);
       return;
     }
     setSuggestionsOpen(true);
     setIsSearching(true);
     const counter = setTimeout(async () => {
       try {
-        const res = await api.get(`/providers/all_providers?search=${searchQuery}&include_offline=true`);
-        setSearchResults(res.data);
+        const [providerRes, placeRes] = await Promise.all([
+          api.get(`/providers/all_providers?search=${searchQuery}&include_offline=true`).catch(() => ({ data: [] })),
+          fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=3`).then(r => r.json()).catch(() => []),
+        ]);
+        setSearchResults(providerRes.data?.providers || providerRes.data || []);
+        setLocationSearchResults(placeRes);
       } catch (err) {
         console.error(err);
       } finally {
@@ -242,31 +334,13 @@ export default function Map() {
     });
   };
 
-  const handleUseGPS = () => {
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
-        setLocationConfirmed(true);
-        setLocating(false);
-      },
-      () => {
-        setLocating(false);
-      }
-    );
-  };
-  const handleSearch = async (query) => {
-    setSearchQuery(query);
-    if (query.length < 2) return setSearchResults([]);
-    const res = await api.get(`/providers/all_providers?search=${query}&include_offline=true`);
-    setSearchResults(res.data);
-  };
 
   const handleSendRequest = async () => {
     if (!requestDescription.trim()) return;
     setSending(true);
     try {
       await createRequest({ provider_id: selectedProvider._id, description: requestDescription });
+      setPendingProviderIds(prev => new Set([...prev, selectedProvider._id]));
       setRequestSent(true);
       setTimeout(() => {
         setSelectedProvider(null);
@@ -279,6 +353,216 @@ export default function Map() {
       setSending(false);
     }
   };
+
+  const _haversine = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  const handleAiSearch = async () => {
+    if (!aiQuery.trim()) return;
+    setAiLoading(true);
+    setAiSuggestions([]);
+    setAiRemoteSuggestions([]);
+    try {
+      const res = await api.post('/ai/analyze-request', { description: aiQuery });
+      setAiResult(res.data);
+      const category = res.data.category;
+      if (res.data.category) setCategoryFilter(res.data.category);
+      if (res.data.structured_description) setRequestDescription(res.data.structured_description);
+
+      if (!category) return;
+
+      // Get client location once
+      let clientLat = null, clientLng = null;
+      try {
+        const stored = localStorage.getItem('client_location');
+        if (stored) { const [la, ln] = JSON.parse(stored); clientLat = la; clientLng = ln; }
+      } catch {}
+
+      // ── In-place providers — ranked by distance (60%) + quality (40%) ──
+      const [provRes, remoteRes] = await Promise.all([
+        api.get(`/providers/all_providers?category=${encodeURIComponent(category)}&per_page=50`).catch(() => ({ data: [] })),
+        REMOTE_CATEGORIES.has(category)
+          ? api.get(`/providers/remote?category=${encodeURIComponent(category)}`).catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const inPlaceList = provRes.data?.providers || provRes.data || [];
+      const scored = inPlaceList
+        .filter(p => p.is_available !== false && p.latitude && p.longitude)
+        .map(p => {
+          const dist = clientLat != null ? _haversine(clientLat, clientLng, p.latitude, p.longitude) : null;
+          const distScore = dist != null ? Math.max(0, 1 - dist / 20000) : 0.5;
+          const qualityScore = ((p.avg_rating || 0) / 5) * 0.7 + Math.min((p.total_jobs || 0) / 50, 1) * 0.3;
+          return { ...p, _dist: dist, _score: distScore * 0.6 + qualityScore * 0.4, _remote: false };
+        })
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 3);
+
+      setAiSuggestions(scored);
+
+      // ── Remote providers — ranked purely by quality (rating + jobs) ──
+      const remoteList = Array.isArray(remoteRes.data) ? remoteRes.data : [];
+      const scoredRemote = remoteList
+        .filter(p => p.is_available !== false)
+        .map(p => {
+          const qualityScore = ((p.avg_rating || 0) / 5) * 0.7 + Math.min((p.total_jobs || 0) / 50, 1) * 0.3;
+          return { ...p, _dist: null, _score: qualityScore, _remote: true };
+        })
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 3);
+
+      setAiRemoteSuggestions(scoredRemote);
+
+    } catch (err) {
+      console.error('AI search failed:', err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // ── Remote Provider Hub ───────────────────────────────────────────────────────
+  if (isRemoteProvider) {
+    const activeRequests = hubRequests.filter(r => ['pending', 'in_progress', 'confirmed'].includes(r.status));
+    const statusMap = {
+      pending:     { label: 'Pending',     color: '#F59E0B' },
+      in_progress: { label: 'In Progress', color: '#22C55E' },
+      confirmed:   { label: 'Confirmed',   color: '#3B82F6' },
+    };
+
+    return (
+      <div className="min-h-screen bg-[#0F172A]">
+        <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+        {/* Top bar */}
+        <div className="sticky top-0 z-50 bg-[#0F172A]/95 backdrop-blur-md border-b border-white/5 px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="w-9 h-9 rounded-[16px] bg-[#1E293B] border border-white/10 flex items-center justify-center text-white hover:bg-[#22C55E] transition-all duration-300"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <NotificationBell />
+          <ThemeToggle />
+          <div className="ml-1">
+            <h1 className="text-white font-bold text-base leading-tight">Remote Hub</h1>
+            <p className="text-white/40 text-[11px]">Your remote workspace</p>
+          </div>
+        </div>
+
+        <div className="px-4 py-6 max-w-2xl mx-auto flex flex-col gap-5">
+
+          {/* Availability toggle card */}
+          <div className={`rounded-[24px] border p-6 transition-all duration-500 ${hubAvailable ? 'bg-[#22C55E]/5 border-[#22C55E]/30 shadow-[0_0_40px_rgba(34,197,94,0.06)]' : 'bg-[#1E293B] border-white/10'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${hubAvailable ? 'bg-[#22C55E] shadow-[0_0_8px_rgba(34,197,94,0.8)]' : 'bg-white/20'}`} />
+                  <span className={`text-sm font-bold ${hubAvailable ? 'text-[#4ADE80]' : 'text-white/40'}`}>
+                    {hubAvailable ? 'Available for work' : 'Offline'}
+                  </span>
+                </div>
+                <p className="text-white/40 text-xs">
+                  {hubAvailable ? 'Clients can find and request you' : 'You are hidden from clients'}
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  setToggling(true);
+                  try {
+                    const res = await api.post('/providers/toggle-availability');
+                    setHubAvailable(res.data.is_available);
+                  } catch {}
+                  setToggling(false);
+                }}
+                disabled={toggling}
+                className={`relative w-14 h-7 rounded-full transition-all duration-300 focus:outline-none ${hubAvailable ? 'bg-[#22C55E]' : 'bg-white/10'}`}
+              >
+                <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${hubAvailable ? 'left-[calc(100%-26px)]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Rating',    value: (user?.provider_profile?.rating_avg || 0).toFixed(1), sub: `${user?.provider_profile?.rating_count || 0} reviews`, icon: '⭐' },
+              { label: 'Jobs Done', value: user?.provider_profile?.total_jobs || 0,               sub: 'completed',                                             icon: '✓'  },
+              { label: 'Active',    value: activeRequests.length,                                 sub: 'requests',                                              icon: '💬' },
+            ].map(stat => (
+              <div key={stat.label} className="bg-[#1E293B] border border-white/8 rounded-[16px] p-4 text-center">
+                <div className="text-lg mb-1">{stat.icon}</div>
+                <div className="text-white font-bold text-xl">{stat.value}</div>
+                <div className="text-white/40 text-[10px] uppercase tracking-wider mt-0.5">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Services */}
+          <div className="bg-[#1E293B] border border-white/8 rounded-[20px] p-4">
+            <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-3">Your Services</p>
+            <div className="flex flex-wrap gap-2">
+              {(user?.provider_profile?.service_categories || []).map(cat => (
+                <span key={cat} className="px-3 py-1 rounded-full bg-[#6366F1]/15 border border-[#6366F1]/30 text-[#818CF8] text-xs font-medium">
+                  {cat}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Active requests feed */}
+          <div>
+            <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-3">Active Requests</p>
+            {activeRequests.length === 0 ? (
+              <div className="bg-[#1E293B] border border-white/8 rounded-[20px] p-8 text-center">
+                <div className="text-3xl mb-2">📭</div>
+                <p className="text-white/40 text-sm">No active requests</p>
+                <p className="text-white/25 text-xs mt-1">When clients request your service, they'll appear here</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {activeRequests.map(r => {
+                  const s = statusMap[r.status] || statusMap.pending;
+                  return (
+                    <div key={r._id} className="bg-[#1E293B] border border-white/8 rounded-[20px] p-4 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#0F172A] flex items-center justify-center text-white/60 font-bold text-sm shrink-0">
+                        {r.client_name?.charAt(0) || '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-semibold text-sm truncate">{r.client_name}</p>
+                        <p className="text-white/40 text-xs truncate mt-0.5">{r.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ color: s.color, background: `${s.color}15`, border: `1px solid ${s.color}40` }}
+                        >
+                          {s.label}
+                        </span>
+                        <Link
+                          to={`/chat/${r._id}`}
+                          className="px-3 py-1.5 rounded-[12px] bg-[#6366F1]/20 border border-[#6366F1]/40 text-[#818CF8] text-xs font-semibold hover:bg-[#6366F1]/30 transition-all duration-200"
+                        >
+                          Chat
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   if (!locationConfirmed) {
     return (
@@ -317,96 +601,101 @@ export default function Map() {
         }}>
           <div style={{
             backgroundColor: '#1E293B', borderRadius: '24px',
-            padding: '32px', width: '400px', maxWidth: '90vw',
+            padding: '28px', width: '460px', maxWidth: '95vw',
             border: '1px solid rgba(255,255,255,0.1)',
             boxShadow: '0 0 60px rgba(34,197,94,0.1)'
           }}>
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>📍</div>
-              <div style={{ color: 'white', fontWeight: '700', fontSize: '18px', marginBottom: '6px' }}>
-                Confirm your location
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ fontSize: '36px', marginBottom: '8px' }}>📍</div>
+              <div style={{ color: 'white', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
+                Where are you?
               </div>
               <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>
-                We need your location to show you nearby providers
+                Search or click on the map to set your location
               </div>
+            </div>
+
+            {/* Search input */}
+            <div style={{ position: 'relative', marginBottom: '8px' }}>
+              <input
+                type="text"
+                placeholder="Search city or address..."
+                value={overlayQuery}
+                onChange={(e) => handleOverlaySearch(e.target.value)}
+                style={{
+                  width: '100%', padding: '12px 16px', boxSizing: 'border-box',
+                  backgroundColor: '#0F172A', color: 'white',
+                  border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px',
+                  fontSize: '14px', outline: 'none',
+                }}
+              />
+              {overlayResults.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+                  backgroundColor: '#0F172A', borderRadius: '12px',
+                  marginTop: '4px', border: '1px solid rgba(255,255,255,0.08)',
+                  maxHeight: '160px', overflowY: 'auto',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+                }}>
+                  {overlayResults.map((r) => (
+                    <div
+                      key={r.place_id}
+                      onClick={() => {
+                        const loc = [parseFloat(r.lat), parseFloat(r.lon)];
+                        setOverlayPicked(loc);
+                        setOverlayMapTarget(loc);
+                        setOverlayQuery(r.display_name.split(',').slice(0, 2).join(','));
+                        setOverlayResults([]);
+                      }}
+                      style={{
+                        padding: '10px 14px', color: 'rgba(255,255,255,0.8)',
+                        cursor: 'pointer', fontSize: '13px',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)'
+                      }}
+                    >
+                      {r.display_name.split(',').slice(0, 3).join(',')}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Mini map */}
+            <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', marginBottom: '12px' }}>
+              <MapContainer center={overlayMapTarget} zoom={12} style={{ height: '240px', width: '100%' }} zoomControl={false}>
+                <TileLayer url={tileUrl} />
+                <FlyToLocation position={overlayMapTarget} />
+                <LocationPicker onLocationSet={(loc) => {
+                  setOverlayPicked(loc);
+                  setOverlayMapTarget(loc);
+                  setOverlayQuery('');
+                }} />
+                {overlayPicked && <Marker position={overlayPicked} />}
+              </MapContainer>
             </div>
 
             <button
-              onClick={handleUseGPS}
-              disabled={locating}
+              disabled={!overlayPicked}
+              onClick={() => {
+                setUserLocation(overlayPicked);
+                setLocationConfirmed(true);
+                localStorage.setItem('client_location', JSON.stringify(overlayPicked));
+              }}
               style={{
                 width: '100%', padding: '12px',
-                background: 'linear-gradient(to right, #22C55E, #4ADE80)',
-                color: 'white', border: 'none', borderRadius: '20px',
-                fontWeight: '600', fontSize: '14px', cursor: 'pointer',
-                boxShadow: '0 4px 15px rgba(34,197,94,0.3)',
-                marginBottom: '12px', opacity: locating ? 0.7 : 1,
+                background: overlayPicked
+                  ? 'linear-gradient(to right, #22C55E, #4ADE80)'
+                  : 'rgba(255,255,255,0.1)',
+                color: overlayPicked ? 'white' : 'rgba(255,255,255,0.3)',
+                border: 'none', borderRadius: '20px',
+                fontWeight: '600', fontSize: '14px',
+                cursor: overlayPicked ? 'pointer' : 'not-allowed',
+                boxShadow: overlayPicked ? '0 4px 15px rgba(34,197,94,0.3)' : 'none',
+                transition: 'all 0.2s',
               }}
             >
-              {locating ? 'Detecting...' : '📡 Use my current location'}
+              {overlayPicked ? '✅ Confirm location' : 'Select a location first'}
             </button>
-
-            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginBottom: '12px' }}>
-              or search manually
-            </div>
-
-            <input
-              type="text"
-              placeholder="Search your city or address..."
-              value={overlayQuery}
-              onChange={(e) => handleOverlaySearch(e.target.value)}
-              style={{
-                width: '100%', padding: '12px 16px', boxSizing: 'border-box',
-                backgroundColor: '#0F172A', color: 'white',
-                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px',
-                fontSize: '14px', outline: 'none',
-              }}
-            />
-
-            {overlayResults.length > 0 && (
-              <div style={{
-                backgroundColor: '#0F172A', borderRadius: '12px',
-                marginTop: '6px', border: '1px solid rgba(255,255,255,0.08)',
-                maxHeight: '180px', overflowY: 'auto'
-              }}>
-                {overlayResults.map((r) => (
-                  <div
-                    key={r._id}
-                    onClick={() => {
-                      setOverlayPicked([parseFloat(r.latitude), parseFloat(r.longitude)]);
-                      setOverlayQuery(r.full_name);
-                      setOverlayResults([]);
-                    }}
-                    style={{
-                      padding: '10px 14px', color: 'rgba(255,255,255,0.8)',
-                      cursor: 'pointer', fontSize: '13px',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)'
-                    }}
-                  >
-                    <div className="font-bold">{r.full_name}</div>
-                    <div className="text-[10px] text-white/40">{r.service_categories?.join(', ')}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {overlayPicked && (
-              <button
-                onClick={() => {
-                  setUserLocation(overlayPicked);
-                  setLocationConfirmed(true);
-                }}
-                style={{
-                  width: '100%', padding: '12px', marginTop: '10px',
-                  background: 'linear-gradient(to right, #22C55E, #4ADE80)',
-                  color: 'white', border: 'none', borderRadius: '20px',
-                  fontWeight: '600', fontSize: '14px', cursor: 'pointer',
-                  boxShadow: '0 4px 15px rgba(34,197,94,0.3)',
-                }}
-              >
-                ✅ Confirm this location
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -428,6 +717,58 @@ export default function Map() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
+              <NotificationBell />
+              <ThemeToggle />
+              {/* AI magic wand button — clients only */}
+              {!isProvider && (
+                <button
+                  onClick={() => { setAiOpen(o => !o); setAiResult(null); setAiQuery(''); setAiSuggestions([]); setAiRemoteSuggestions([]); }}
+                  title="Describe what you need — AI will find the right category"
+                  className={`w-10 h-10 rounded-[20px] backdrop-blur-md border shadow-lg flex items-center justify-center transition-all duration-300 text-base ${aiOpen ? 'bg-[#22C55E] border-[#22C55E] text-white' : 'bg-[#1E293B]/90 border-white/10 text-white/60 hover:text-[#22C55E] hover:border-[#22C55E]/40'}`}
+                >
+                  ✨
+                </button>
+              )}
+              {!isProvider && (
+                <div className="flex items-center bg-[#1E293B]/90 backdrop-blur-md border border-white/10 rounded-[20px] p-1 shadow-lg">
+                  <button
+                    onClick={() => { setViewMode('in_place'); setRemoteSearch(''); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[16px] text-xs font-semibold transition-all duration-200 ${viewMode === 'in_place' ? 'bg-[#22C55E] text-white shadow-sm' : 'text-white/50 hover:text-white'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    In-Place
+                  </button>
+                  <button
+                    onClick={() => setViewMode('remote')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[16px] text-xs font-semibold transition-all duration-200 ${viewMode === 'remote' ? 'bg-[#6366F1] text-white shadow-sm' : 'text-white/50 hover:text-white'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
+                    </svg>
+                    Remote
+                  </button>
+                </div>
+              )}
+              {!isProvider && (
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('client_location');
+                    setLocationConfirmed(false);
+                    setOverlayPicked(null);
+                    setOverlayQuery('');
+                  }}
+                  title="Reset my location"
+                  className="ml-auto w-10 h-10 rounded-[20px] bg-[#1E293B]/90 backdrop-blur-md border border-white/10 shadow-lg flex items-center justify-center text-white/60 hover:text-[#22C55E] hover:border-[#22C55E]/40 transition-all duration-300"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+              )}
           {/* SEARCH BAR CONTAINER */}
           <div className="relative w-full max-w-[320px]">
             <div className={`flex items-center bg-[#1E293B]/95 backdrop-blur-md border border-white/10 shadow-2xl transition-all duration-300 ${suggestionsOpen ? 'rounded-t-[20px]' : 'rounded-[20px]'}`}>
@@ -503,6 +844,31 @@ export default function Map() {
                     )}
                   </div>
 
+                  {/* LOCATIONS SECTION */}
+                  {locationSearchResults.length > 0 && (
+                    <div className="py-2 border-b border-white/5">
+                      <div className="px-4 py-2 text-[10px] uppercase tracking-widest text-[#22C55E] font-bold">Locations</div>
+                      {locationSearchResults.map((place) => (
+                        <button
+                          key={place.place_id}
+                          onClick={() => handleSelectPlace(place)}
+                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/[0.05] group transition-all duration-200 text-left border-l-2 border-transparent hover:border-[#22C55E]"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 group-hover:bg-[#22C55E]/10 group-hover:text-[#22C55E] transition-colors">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 overflow-hidden">
+                            <div className="text-sm text-white font-medium truncate">{place.display_name.split(',').slice(0, 2).join(',')}</div>
+                            <div className="text-[11px] text-white/40 truncate">{place.display_name.split(',').slice(2, 4).join(',')}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* SERVICES SECTION */}
                   <div className="py-2">
                     <div className="px-4 py-2 text-[10px] uppercase tracking-widest text-[#22C55E] font-bold">Services</div>
@@ -535,31 +901,204 @@ export default function Map() {
           </div>
         </div>
 
-        {/* HORIZONTAL FILTER BAR */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 pointer-events-auto">
-          {SERVICE_LIST.map((service) => (
-            <button
-              key={service.name}
-              onClick={() => setCategoryFilter(service.name)}
-              style={{
-                backgroundColor: categoryFilter === service.name ? service.color : '#1E293B',
-                boxShadow: categoryFilter === service.name ? `0 4px 12px ${service.color}40` : 'none',
-                borderColor: categoryFilter === service.name ? 'transparent' : 'rgba(255,255,255,0.08)'
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap transition-all duration-300 hover:scale-105 active:scale-95 ${categoryFilter === service.name ? 'text-white' : 'text-white/60 hover:text-white hover:border-white/20'}`}
+        {/* AI SEARCH PANEL — clients only, visible when aiOpen */}
+        {!isProvider && aiOpen && (
+          <div className="pointer-events-auto w-full max-w-md">
+            <div className="bg-[#1E293B]/95 backdrop-blur-md border border-[#22C55E]/30 rounded-[20px] shadow-2xl overflow-hidden">
+              {/* Input row */}
+              <div className="flex items-center gap-2 px-4 py-3">
+                <span className="text-base">✨</span>
+                <input
+                  type="text"
+                  value={aiQuery}
+                  onChange={e => setAiQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAiSearch()}
+                  placeholder="Describe what you need in any language..."
+                  className="flex-1 bg-transparent text-white placeholder-white/40 text-sm outline-none"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAiSearch}
+                  disabled={aiLoading || !aiQuery.trim()}
+                  className="w-8 h-8 rounded-full bg-[#22C55E] flex items-center justify-center text-white disabled:opacity-40 transition-opacity"
+                >
+                  {aiLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {/* Result card */}
+              {aiResult && (
+                <div className="border-t border-[#22C55E]/20 px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#4ADE80] text-xs font-semibold">✓ AI understood your request</span>
+                    <button onClick={() => setAiResult(null)} className="text-white/30 hover:text-white/60 text-lg leading-none">×</button>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-white/50">Category:</span>
+                    <span className="text-white font-semibold">{aiResult.category}</span>
+                    <span className="text-white/20">·</span>
+                    <span className={`text-xs font-semibold ${aiResult.urgency === 'high' ? 'text-red-400' : aiResult.urgency === 'medium' ? 'text-yellow-400' : 'text-green-400'}`}>
+                      {aiResult.urgency} urgency
+                    </span>
+                  </div>
+                  {aiResult.price_min && aiResult.price_max && (
+                    <div className="text-sm">
+                      <span className="text-white/50">Est. price: </span>
+                      <span className="text-white font-semibold">{aiResult.price_min} – {aiResult.price_max} DT</span>
+                    </div>
+                  )}
+                  {aiResult.key_points?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {aiResult.key_points.map((kp, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full bg-white/5 text-white/60 text-[11px]">{kp}</span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-white/30 text-[11px]">Description pre-filled for your request ✓</p>
+
+                  {/* In-place provider suggestions */}
+                  {aiSuggestions.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
+                      <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">📍 Best matches near you</p>
+                      {aiSuggestions.map(p => (
+                        <button
+                          key={p._id}
+                          onClick={() => { setSelectedProvider(p); setAiOpen(false); }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-white/5 hover:bg-[#22C55E]/10 hover:border-[#22C55E]/30 border border-transparent transition-all duration-200 text-left"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-semibold truncate">{p.full_name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {p.avg_rating > 0 && <span className="text-yellow-400 text-[10px]">★ {p.avg_rating.toFixed(1)}</span>}
+                              {p._dist != null && (
+                                <span className="text-white/40 text-[10px]">
+                                  {p._dist < 1000 ? `${Math.round(p._dist)}m` : `${(p._dist/1000).toFixed(1)}km`}
+                                </span>
+                              )}
+                              {p.total_jobs > 0 && <span className="text-white/30 text-[10px]">{p.total_jobs} jobs</span>}
+                            </div>
+                          </div>
+                          <span className="text-[#4ADE80] text-[10px] font-semibold flex-shrink-0">Request →</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Remote provider suggestions */}
+                  {aiRemoteSuggestions.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
+                      <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">🌐 Available remotely</p>
+                      {aiRemoteSuggestions.map(p => (
+                        <button
+                          key={p._id}
+                          onClick={() => { setSelectedProvider(p); setViewMode('remote'); setAiOpen(false); }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-[#6366F1]/5 hover:bg-[#6366F1]/15 hover:border-[#6366F1]/30 border border-transparent transition-all duration-200 text-left"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-[#6366F1]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-white text-xs font-semibold truncate">{p.full_name}</p>
+                              <span className="px-1.5 py-0.5 rounded-full bg-[#6366F1]/20 text-[#818CF8] text-[9px] font-bold flex-shrink-0">REMOTE</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {p.avg_rating > 0 && <span className="text-yellow-400 text-[10px]">★ {p.avg_rating.toFixed(1)}</span>}
+                              {p.total_jobs > 0 && <span className="text-white/30 text-[10px]">{p.total_jobs} jobs</span>}
+                              <span className="text-[#818CF8] text-[10px]">Works from anywhere</span>
+                            </div>
+                          </div>
+                          <span className="text-[#818CF8] text-[10px] font-semibold flex-shrink-0">Request →</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CATEGORY FILTER BUTTON */}
+        <div className="relative pointer-events-auto mt-2">
+          <button
+            onClick={() => setCategoryPanelOpen(p => !p)}
+            className="flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#1E293B]/90 backdrop-blur-md border border-white/10 shadow-lg text-sm font-semibold transition-all duration-200 hover:border-[#22C55E]/50"
+            style={{
+              color: categoryFilter === 'All' ? 'rgba(255,255,255,0.7)' : '#4ADE80',
+              borderColor: categoryFilter === 'All' ? 'rgba(255,255,255,0.1)' : 'rgba(34,197,94,0.4)',
+            }}
+          >
+            {categoryFilter !== 'All' && (
+              <img
+                src={SERVICE_LIST.find(s => s.name === categoryFilter)?.icon}
+                alt={categoryFilter}
+                className="w-4 h-4 object-contain"
+              />
+            )}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+            </svg>
+            {categoryFilter === 'All' ? 'Categories' : categoryFilter}
+            <svg
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${categoryPanelOpen ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
-              <img src={service.icon} alt={service.name} className="w-4 h-4 object-contain" />
-              {service.name}
-            </button>
-          ))}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* CATEGORY GRID PANEL */}
+          {categoryPanelOpen && (
+            <div className="absolute top-full left-0 mt-2 w-72 bg-[#1E293B]/95 backdrop-blur-md border border-white/10 rounded-[16px] shadow-2xl p-3 z-[1100]">
+              <div className="grid grid-cols-4 gap-2">
+                {SERVICE_LIST.map((service) => {
+                  const isActive = categoryFilter === service.name;
+                  return (
+                    <button
+                      key={service.name}
+                      onClick={() => { setCategoryFilter(service.name); setCategoryPanelOpen(false); }}
+                      title={service.name}
+                      className="flex flex-col items-center gap-1 p-2 rounded-[10px] transition-all duration-200 hover:scale-105 active:scale-95"
+                      style={{
+                        backgroundColor: isActive ? `${service.color}25` : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${isActive ? service.color + '60' : 'transparent'}`,
+                      }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center p-1.5"
+                        style={{ backgroundColor: isActive ? `${service.color}30` : 'rgba(255,255,255,0.07)' }}
+                      >
+                        <img src={service.icon} alt={service.name} className="w-full h-full object-contain" />
+                      </div>
+                      <span
+                        className="text-[9px] font-semibold text-center leading-tight"
+                        style={{ color: isActive ? '#4ADE80' : 'rgba(255,255,255,0.5)' }}
+                      >
+                        {service.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* CLICK OUTSIDE HANDLER */}
-      {suggestionsOpen && (
-        <div 
+      {(suggestionsOpen || categoryPanelOpen) && (
+        <div
           className="fixed inset-0 z-[999] bg-transparent"
-          onClick={() => setSuggestionsOpen(false)}
+          onClick={() => { setSuggestionsOpen(false); setCategoryPanelOpen(false); }}
         />
       )}
 
@@ -568,14 +1107,17 @@ export default function Map() {
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-[320px] px-4">
           <button
             onClick={async () => {
-              setUserLocation(pendingLocation);
+              const confirmed = pendingLocation;
+              setUserLocation(confirmed);
               setPendingLocation(null);
               if (isProvider) {
                 try {
                   await api.put('/providers/location', {
-                    latitude: pendingLocation[0],
-                    longitude: pendingLocation[1],
+                    latitude: confirmed[0],
+                    longitude: confirmed[1],
                   });
+                  // Reload providers so own icon appears/moves correctly
+                  await loadProviders(categoryFilter, 1, false);
                 } catch (err) { console.error(err); }
               }
             }}
@@ -592,7 +1134,7 @@ export default function Map() {
         zoomControl={false}
         attributionControl={false}
       >
-        <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" />
+        <TileLayer url={tileUrl} />
 
         <FlyToLocation position={pendingLocation || userLocation} />
 
@@ -613,19 +1155,21 @@ export default function Map() {
           </Marker>
         )}
 
-        <Marker position={userLocation} icon={userIcon}>
-          <Popup>
-            <div style={{ padding: '10px 14px', fontSize: '13px', color: 'rgba(255,255,255,0.8)' }}>
-              📍 You are here
-            </div>
-          </Popup>
-        </Marker>
+        {!isProvider && (
+          <Marker position={userLocation} icon={userIcon}>
+            <Popup>
+              <div style={{ padding: '10px 14px', fontSize: '13px', color: 'rgba(255,255,255,0.8)' }}>
+                📍 You are here
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
-        {providers.map((provider) => {
+        {providers.map((provider, index) => {
           const lat = provider.latitude;
           const lng = provider.longitude;
 
-          if (lat === undefined || lng === undefined) return null;
+          if (!lat || !lng) return null;
 
           return (
             <Marker
@@ -659,12 +1203,22 @@ export default function Map() {
                   </div>
 
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setSelectedProvider(provider)}
-                      className="flex-1 py-1.5 rounded-[8px] bg-gradient-to-r from-[#22C55E] to-[#16A34A] text-white text-[11px] font-semibold text-center shadow-lg shadow-[#22C55E]/20 hover:shadow-[#22C55E]/40 hover:scale-[1.02] transition-all duration-300 pointer-events-auto"
-                    >
-                      Request
-                    </button>
+                    {!isProvider && (
+                      pendingProviderIds.has(provider._id) ? (
+                        <div className="flex-1 py-1.5 rounded-[8px] flex items-center justify-center gap-1.5 text-[11px] font-semibold"
+                          style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#FCD34D', cursor: 'not-allowed' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#FCD34D', display: 'inline-block', animation: 'pulse-ring 1.5s ease-out infinite' }} />
+                          Waiting...
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedProvider(provider)}
+                          className="flex-1 py-1.5 rounded-[8px] bg-gradient-to-r from-[#22C55E] to-[#16A34A] text-white text-[11px] font-semibold text-center shadow-lg shadow-[#22C55E]/20 hover:shadow-[#22C55E]/40 hover:scale-[1.02] transition-all duration-300 pointer-events-auto"
+                        >
+                          Request
+                        </button>
+                      )
+                    )}
                     <Link
                       to={`/provider/${provider._id}`}
                       className="flex-1 py-1.5 rounded-[8px] bg-white/10 border border-white/20 text-white text-[11px] font-semibold text-center hover:bg-white/20 hover:scale-[1.02] transition-all duration-300 pointer-events-auto flex items-center justify-center"
@@ -678,6 +1232,174 @@ export default function Map() {
           );
         })}
       </MapContainer>
+
+      {/* ── Load More Providers ───────────────────────────────────────────── */}
+      {viewMode === 'in_place' && providers.length < providerTotal && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
+          <button
+            onClick={async () => {
+              setLoadingMore(true);
+              await loadProviders(categoryFilter, providerPage + 1, true);
+              setLoadingMore(false);
+            }}
+            disabled={loadingMore}
+            className="px-5 py-2.5 rounded-[20px] bg-[#1E293B]/95 backdrop-blur-md border border-white/10 text-white/70 text-sm font-semibold shadow-xl hover:border-[#22C55E]/40 hover:text-[#4ADE80] transition-all duration-200 disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading...' : `Load more (${providers.length}/${providerTotal})`}
+          </button>
+        </div>
+      )}
+
+      {/* ── Remote Providers Grid ─────────────────────────────────────────── */}
+      {viewMode === 'remote' && !isProvider && (
+        <div className="absolute inset-0 z-[500] bg-[#0F172A]/97 backdrop-blur-sm overflow-y-auto"
+          style={{ top: 0, paddingTop: '140px', paddingBottom: '32px' }}
+        >
+          {/* Remote search bar */}
+          <div className="px-4 mb-4">
+            <div className="flex items-center gap-2 bg-[#1E293B]/80 backdrop-blur-md border border-white/10 rounded-[20px] px-4 py-2.5 max-w-md">
+              <svg className="w-4 h-4 text-white/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search remote providers by name or service..."
+                value={remoteSearch}
+                onChange={e => setRemoteSearch(e.target.value)}
+                className="flex-1 bg-transparent text-white placeholder-white/30 text-sm outline-none"
+              />
+              {remoteSearch && (
+                <button onClick={() => setRemoteSearch('')} className="text-white/30 hover:text-white/60 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {loadingRemote ? (
+            <div className="flex items-center justify-center h-48">
+              <div className="w-8 h-8 border-2 border-[#6366F1] border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : remoteProviders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-3">
+              <span className="text-4xl">💻</span>
+              <p className="text-white/40 text-sm">No remote providers found</p>
+              {(categoryFilter !== 'All' || remoteSearch) && (
+                <button onClick={() => { setCategoryFilter('All'); setRemoteSearch(''); }} className="text-[#6366F1] text-xs hover:underline">
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {remoteProviders.map(provider => {
+                const isPending = pendingProviderIds.has(provider._id);
+                const stars = Math.round(provider.rating_avg || 0);
+                return (
+                  <div
+                    key={provider._id}
+                    className="bg-[#1E293B] border border-white/8 rounded-[20px] p-5 flex flex-col gap-4 hover:border-[#6366F1]/40 hover:shadow-[0_0_30px_rgba(99,102,241,0.1)] transition-all duration-300"
+                  >
+                    {/* Header */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-bold shrink-0"
+                        style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
+                        {provider.full_name?.charAt(0) || '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-semibold text-sm truncate">{provider.full_name}</p>
+                          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-[#6366F1]/20 text-[#818CF8] text-[9px] font-bold uppercase tracking-wider">
+                            {provider.job_type === 'both' ? 'Remote & In-Place' : 'Remote'}
+                          </span>
+                        </div>
+                        {/* Stars */}
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <div className="flex">
+                            {[1,2,3,4,5].map(s => (
+                              <svg key={s} className="w-3 h-3" fill={s <= stars ? '#F59E0B' : 'none'} stroke={s <= stars ? '#F59E0B' : '#ffffff30'} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                              </svg>
+                            ))}
+                          </div>
+                          <span className="text-white/40 text-[10px]">
+                            {(provider.rating_avg || 0).toFixed(1)} ({provider.rating_count || 0})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Categories */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(provider.service_categories || []).slice(0, 3).map(cat => (
+                        <span key={cat} className="px-2 py-0.5 rounded-full bg-[#0F172A] border border-white/10 text-white/60 text-[10px] font-medium">
+                          {cat}
+                        </span>
+                      ))}
+                      {(provider.service_categories || []).length > 3 && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#0F172A] border border-white/10 text-white/40 text-[10px]">
+                          +{provider.service_categories.length - 3}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bio */}
+                    {provider.bio && (
+                      <p className="text-white/50 text-xs leading-relaxed line-clamp-2">{provider.bio}</p>
+                    )}
+
+                    {/* Stats row */}
+                    <div className="flex items-center gap-3 text-xs">
+                      {provider.hourly_rate && (
+                        <div className="flex items-center gap-1 text-[#4ADE80] font-semibold">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {provider.hourly_rate} DT/hr
+                        </div>
+                      )}
+                      {provider.experience_years && (
+                        <div className="flex items-center gap-1 text-white/40">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          {provider.experience_years}y exp
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 text-white/40 ml-auto">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {provider.total_jobs || 0} jobs
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 mt-auto pt-1 border-t border-white/5">
+                      <Link
+                        to={`/provider/${provider._id}`}
+                        className="flex-1 py-2 rounded-[12px] bg-white/5 border border-white/10 text-white/60 text-xs font-semibold text-center hover:bg-white/10 transition-all duration-200"
+                      >
+                        View Profile
+                      </Link>
+                      <button
+                        onClick={() => { setSelectedProvider(provider); setRequestSent(false); setRequestDescription(''); }}
+                        disabled={isPending}
+                        className="flex-1 py-2 rounded-[12px] text-white text-xs font-semibold transition-all duration-200 disabled:opacity-50"
+                        style={{ background: isPending ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg,#6366F1,#8B5CF6)', boxShadow: isPending ? 'none' : '0 4px 15px rgba(99,102,241,0.3)' }}
+                      >
+                        {isPending ? 'Requested ✓' : 'Request'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Request modal */}
       {selectedProvider && (

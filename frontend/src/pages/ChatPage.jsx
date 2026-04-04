@@ -1,7 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
+import ThemeToggle from '../components/ThemeToggle';
 import { getChatRoom, sendOffer, updateOfferStatus, confirmAgreement, cancelRequest } from '../api/chat';
+import { completeRequest } from '../api/request';
+import { submitRating, getJobRatings } from '../api/ratings';
+import api from '../api/axios';
 
 export default function ChatPage() {
   const { requestId } = useParams();
@@ -12,13 +16,19 @@ export default function ChatPage() {
   const [inputText, setInputText] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [typingTimeout, setTypingTimeout] = useState(null);
+  const typingTimeoutRef = useRef(null);
   const [showOfferPanel, setShowOfferPanel] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
   const [offerNote, setOfferNote] = useState('');
+  const [priceStats, setPriceStats] = useState(null);
+  const [priceStatsFetched, setPriceStatsFetched] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [bothConfirmed, setBothConfirmed] = useState(false);
   const [userConfirmed, setUserConfirmed] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
+  const [ratingScore, setRatingScore] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
@@ -27,19 +37,27 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const connectWebSocket = useCallback(() => {
+  // Stable refs so the WS onmessage handler can access latest values without re-creating the socket
+  const userIdRef = useRef(user?._id);
+  const navigateRef = useRef(navigate);
+  useEffect(() => { userIdRef.current = user?._id; }, [user?._id]);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
+  // WebSocket — only re-creates if requestId changes
+  useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
 
-    const ws = new WebSocket(`ws://localhost:8000/api/chat/ws/${requestId}?token=${token}`);
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.hostname}:8000/api/chat/ws/${requestId}?token=${token}`);
+    wsRef.current = ws;
 
-    ws.onopen = () => {
-      setIsConnected(true);
-    };
+    ws.onopen = () => setIsConnected(true);
+    ws.onclose = () => setIsConnected(false);
+    ws.onerror = () => setIsConnected(false);
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-
       switch (data.type) {
         case 'history':
           setMessages(data.messages);
@@ -48,11 +66,10 @@ export default function ChatPage() {
           setMessages(prev => [...prev, data.message]);
           break;
         case 'typing':
-          if (data.user_id !== user?._id) {
+          if (data.user_id !== userIdRef.current) {
             setIsTyping(true);
-            if (typingTimeout) clearTimeout(typingTimeout);
-            const timeout = setTimeout(() => setIsTyping(false), 2000);
-            setTypingTimeout(timeout);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2000);
           }
           break;
         case 'offer':
@@ -62,6 +79,13 @@ export default function ChatPage() {
           setMessages(prev => prev.map(msg =>
             msg._id === data.message._id ? data.message : msg
           ));
+          // When an offer is accepted, set agreed_price so the Confirm button appears
+          if (data.message?.offer_status === 'accepted') {
+            setRoomData(prev => prev ? {
+              ...prev,
+              room: { ...prev.room, agreed_price: data.message.offer_amount }
+            } : prev);
+          }
           break;
         case 'system':
           setMessages(prev => [...prev, {
@@ -87,21 +111,20 @@ export default function ChatPage() {
             message: data.message,
             timestamp: new Date().toISOString(),
           }]);
-          setTimeout(() => navigate('/map'), 3000);
+          setTimeout(() => navigateRef.current('/map'), 3000);
+          break;
+        case 'job_completed':
+          setIsCompleted(true);
+          setBothConfirmed(true);
           break;
       }
     };
 
-    ws.onclose = () => {
-      setIsConnected(false);
+    return () => {
+      ws.close();
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-
-    ws.onerror = () => {
-      setIsConnected(false);
-    };
-
-    wsRef.current = ws;
-  }, [requestId, user?._id, typingTimeout, navigate]);
+  }, [requestId]);
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -110,12 +133,21 @@ export default function ChatPage() {
         setRoomData(res.data);
         setMessages(res.data.messages || []);
 
-        // Check if both already confirmed
         if (res.data.room?.status === 'confirmed') {
           setBothConfirmed(true);
         }
-
-        // Check if current user already confirmed
+        if (res.data.request_status === 'completed') {
+          setIsCompleted(true);
+          setBothConfirmed(true);
+          // Check if current user already submitted a rating for this job
+          try {
+            const ratingsRes = await getJobRatings(requestId);
+            const alreadyRated = ratingsRes.data.some(r => r.rater_id === user?._id);
+            if (alreadyRated) setHasRated(true);
+          } catch {
+            // ignore — worst case they see the rating form again
+          }
+        }
         if (user?._id === res.data.room?.client_id && res.data.room?.client_confirmed) {
           setUserConfirmed(true);
         }
@@ -130,17 +162,7 @@ export default function ChatPage() {
     };
 
     fetchRoom();
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (typingTimeout) {
-        clearTimeout(typingTimeout);
-      }
-    };
-  }, [requestId, connectWebSocket, user?._id, typingTimeout]);
+  }, [requestId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -224,6 +246,26 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error('Failed to confirm:', err);
+    }
+  };
+
+  const handleComplete = async () => {
+    try {
+      await completeRequest(requestId);
+      setIsCompleted(true);
+      wsRef.current?.send(JSON.stringify({ type: 'job_completed' }));
+    } catch (err) {
+      console.error('Failed to mark as complete:', err);
+    }
+  };
+
+  const handleSubmitRating = async () => {
+    if (!ratingScore) return;
+    try {
+      await submitRating({ job_id: requestId, score: ratingScore, comment: ratingComment });
+      setHasRated(true);
+    } catch (err) {
+      console.error('Failed to submit rating:', err);
     }
   };
 
@@ -317,14 +359,17 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
-        {!bothConfirmed && !isCancelled && (
-          <button
-            onClick={() => setShowCancelModal(true)}
-            className="px-3 py-1.5 rounded-[20px] bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all duration-200"
-          >
-            Cancel
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {!bothConfirmed && !isCancelled && (
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="px-3 py-1.5 rounded-[20px] bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all duration-200"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Agreed Price Banner */}
@@ -499,6 +544,82 @@ export default function ChatPage() {
               <span className="text-white">{roomData?.room?.provider_id === user?._id ? 'You' : roomData?.other_party_name}</span>
             </div>
           </div>
+
+          {isProvider && !isCompleted && (
+            <button
+              onClick={handleComplete}
+              className="w-full mt-4 py-2.5 rounded-[20px] bg-[#22C55E] text-white font-semibold text-sm hover:bg-[#22C55E]/90 transition-all duration-200 flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Mark Job as Complete
+            </button>
+          )}
+
+          {isCompleted && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-[#4ADE80] text-sm font-semibold">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Job Completed
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Rating Card — shown after job is completed, until user submits rating */}
+      {isCompleted && !hasRated && (
+        <div className="mx-4 mb-4 bg-[#1E293B] rounded-[20px] border border-white/10 p-4">
+          <p className="text-white font-semibold text-center text-sm">
+            Rate {roomData?.other_party_name}
+          </p>
+          <p className="text-white/40 text-xs text-center mt-1 mb-4">How was your experience?</p>
+
+          {/* Stars */}
+          <div className="flex justify-center gap-3 mb-4">
+            {[1, 2, 3, 4, 5].map(star => (
+              <button key={star} onClick={() => setRatingScore(star)}>
+                <svg
+                  className="w-8 h-8 transition-colors duration-150"
+                  fill={star <= ratingScore ? '#22C55E' : 'none'}
+                  stroke={star <= ratingScore ? '#22C55E' : '#ffffff40'}
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                  />
+                </svg>
+              </button>
+            ))}
+          </div>
+
+          {/* Comment */}
+          <textarea
+            value={ratingComment}
+            onChange={e => setRatingComment(e.target.value)}
+            placeholder="Leave a comment (optional)"
+            rows={2}
+            className="w-full bg-[#0F172A] border border-white/10 rounded-[12px] px-4 py-2.5 text-white text-sm placeholder-white/30 focus:outline-none focus:border-[#22C55E]/50 resize-none mb-3"
+          />
+
+          <button
+            onClick={handleSubmitRating}
+            disabled={!ratingScore}
+            className="w-full py-2.5 rounded-[20px] bg-[#22C55E] text-white font-semibold text-sm hover:bg-[#22C55E]/90 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Submit Rating
+          </button>
+        </div>
+      )}
+
+      {/* Already rated confirmation */}
+      {isCompleted && hasRated && (
+        <div className="mx-4 mb-4 flex items-center justify-center gap-2 text-[#4ADE80] text-sm font-semibold py-3">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Thank you for your rating!
         </div>
       )}
 
@@ -506,7 +627,16 @@ export default function ChatPage() {
       {isProvider && !bothConfirmed && !isCancelled && (
         <div className="border-t border-white/10">
           <button
-            onClick={() => setShowOfferPanel(!showOfferPanel)}
+            onClick={() => {
+              const next = !showOfferPanel;
+              setShowOfferPanel(next);
+              if (next && !priceStatsFetched && roomData?.service_category) {
+                setPriceStatsFetched(true);
+                api.get(`/ai/price-stats/${encodeURIComponent(roomData.service_category)}`)
+                  .then(res => { if (res.data?.available) setPriceStats(res.data); })
+                  .catch(() => {});
+              }
+            }}
             className="w-full px-4 py-2 text-left text-white/60 text-sm hover:text-white transition-colors flex items-center justify-between"
           >
             <span>Suggest a Price</span>
@@ -521,6 +651,19 @@ export default function ChatPage() {
           </button>
           {showOfferPanel && (
             <div className="px-4 pb-4 space-y-3">
+              {/* Platform price stats hint */}
+              {priceStats && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-[12px] bg-blue-500/8 border border-blue-500/20">
+                  <span className="text-base mt-0.5">📊</span>
+                  <div className="text-xs text-white/70">
+                    <span className="text-white/90 font-semibold">On Khadamni</span>
+                    <span className="text-white/40"> ({priceStats.count} similar jobs): </span>
+                    <span className="text-[#4ADE80] font-semibold">{priceStats.min} – {priceStats.max} DT</span>
+                    <span className="text-white/40"> · avg </span>
+                    <span className="text-white font-semibold">{priceStats.avg} DT</span>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2">
                 <input
                   type="number"

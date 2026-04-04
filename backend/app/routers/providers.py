@@ -1,16 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from app.services.provider_service import get_all_providers, toggle_availability, update_location, get_provider_by_id
+import httpx
+from app.services.provider_service import get_all_providers, get_remote_providers, toggle_availability, update_location, get_provider_by_id
 from app.dependencies import get_current_user
 
 
 router = APIRouter(prefix="/api/providers", tags=["Providers"])
 
 
+@router.get("/geocode")
+async def geocode(q: str = Query(...)):
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": q, "format": "json", "limit": 5},
+            headers={"User-Agent": "Khadamni/1.0 (service marketplace app)"}
+        )
+    return res.json()
+
+
 @router.get("/all_providers")
-async def all_providers(category: str = None, search: str = None, include_offline: bool = True):
-    providers = await get_all_providers(category, search, not include_offline)
+async def all_providers(category: str = None, search: str = None, include_offline: bool = True, page: int = 1, per_page: int = 30):
+    return await get_all_providers(category, search, not include_offline, page, per_page)
+
+
+@router.get("/remote")
+async def remote_providers(category: str = None, search: str = None):
+    providers = await get_remote_providers(category, search)
     return providers
+
+
+@router.get("/route")
+async def get_route(slat: float = Query(...), slng: float = Query(...), elat: float = Query(...), elng: float = Query(...)):
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"https://router.project-osrm.org/route/v1/driving/{slng},{slat};{elng},{elat}",
+            params={"overview": "full", "geometries": "geojson"},
+            headers={"User-Agent": "Khadamni/1.0 (service marketplace app)"},
+            timeout=10.0
+        )
+    return res.json()
 
 
 @router.get("/{provider_id}")

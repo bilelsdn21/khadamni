@@ -51,8 +51,8 @@ async def submit_rating(rater_id: str, rater_role: str, data):
     if rater_role == "client":
         # Provider was rated → update provider_profiles
         profile = await db.provider_profiles.find_one({"user_id": rated_id})
-        old_avg = profile["rating_avg"]
-        old_count = profile["rating_count"]
+        old_avg = profile.get("rating_avg", 0)
+        old_count = profile.get("rating_count", 0)
         new_count = old_count + 1
         new_avg = (old_avg * old_count + data.score) / new_count
         await db.provider_profiles.update_one(

@@ -112,3 +112,177 @@ input:focus, button:focus-visible { outline: none; }
 .leaflet-marker-icon:focus {
   outline: none !important;
 }
+
+/* ══════════════════════════════════════════════════════
+   SMOOTH TRANSITIONS (applied globally for theme switch)
+   ══════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    color 0.15s ease;
+}
+
+/* ══════════════════════════════════════════════════════
+   LIGHT THEME
+   Palette — page: #E8EEF5  card: #F2F6FB  input: #EAEFF6
+   All accent greens / reds / blues stay as-is on colored bg
+   ══════════════════════════════════════════════════════ */
+
+[data-theme="light"] body {
+  background-color: #E8EEF5;
+}
+
+/* ────────────────────────────────────────────────────
+   BACKGROUNDS
+   ──────────────────────────────────────────────────── */
+
+/* Page-level dark → calm blue-gray */
+[data-theme="light"] [class*="bg-[#0F172A]"] {
+  background-color: #E8EEF5 !important;
+}
+
+/* Cards / panels → very soft off-white */
+[data-theme="light"] [class*="bg-[#1E293B]"] {
+  background-color: #F2F6FB !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.04) !important;
+}
+
+/* Secondary nested panels */
+[data-theme="light"] [class*="bg-[#0F1629]"] {
+  background-color: #D9E2ED !important;
+}
+
+/* Subtle white-overlay tints → inverted dark tints */
+[data-theme="light"] [class~="bg-white/5"]  { background-color: rgba(15,23,42,0.03) !important; }
+[data-theme="light"] [class~="bg-white/8"]  { background-color: rgba(15,23,42,0.05) !important; }
+[data-theme="light"] [class~="bg-white/10"] { background-color: rgba(15,23,42,0.06) !important; }
+[data-theme="light"] [class~="bg-white/20"] { background-color: rgba(15,23,42,0.10) !important; }
+
+/* ────────────────────────────────────────────────────
+   BORDERS
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] [class*="border-white"] {
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+/* ────────────────────────────────────────────────────
+   TEXT — white/* → slate dark at same relative opacity
+   Using [class~=] word-boundary so text-white/50 ≠ text-white
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] [class~="text-white"]    { color: #1E293B !important; }
+[data-theme="light"] [class~="text-white/90"] { color: rgba(15,23,42,0.90) !important; }
+[data-theme="light"] [class~="text-white/85"] { color: rgba(15,23,42,0.85) !important; }
+[data-theme="light"] [class~="text-white/80"] { color: rgba(15,23,42,0.80) !important; }
+[data-theme="light"] [class~="text-white/75"] { color: rgba(15,23,42,0.75) !important; }
+[data-theme="light"] [class~="text-white/70"] { color: rgba(15,23,42,0.70) !important; }
+[data-theme="light"] [class~="text-white/60"] { color: rgba(15,23,42,0.55) !important; }
+[data-theme="light"] [class~="text-white/50"] { color: rgba(15,23,42,0.48) !important; }
+[data-theme="light"] [class~="text-white/40"] { color: rgba(15,23,42,0.38) !important; }
+[data-theme="light"] [class~="text-white/30"] { color: rgba(15,23,42,0.28) !important; }
+[data-theme="light"] [class~="text-white/25"] { color: rgba(15,23,42,0.22) !important; }
+[data-theme="light"] [class~="text-white/20"] { color: rgba(15,23,42,0.18) !important; }
+[data-theme="light"] [class~="text-white/10"] { color: rgba(15,23,42,0.10) !important; }
+[data-theme="light"] [class~="text-white/5"]  { color: rgba(15,23,42,0.05) !important; }
+
+/* ────────────────────────────────────────────────────
+   ACCENT TEXT — lime #4ADE80 is near-invisible on light bg;
+   darken to readable forest green. #22C55E stays but deepens.
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] [class~="text-[#4ADE80]"] { color: #16A34A !important; }
+[data-theme="light"] [class~="text-[#22C55E]"] { color: #15803D !important; }
+
+/* ────────────────────────────────────────────────────
+   RESTORE white text on SOLID coloured backgrounds
+   CRITICAL: [class~=] word-boundary, NOT [class*=] substring —
+   substring also matches hover:bg-[#22C55E], which would make
+   burger-menu lines invisible (white on light bg).
+   ──────────────────────────────────────────────────── */
+
+/* Same element: solid green / red / blue bg + text-white */
+[data-theme="light"] [class~="bg-[#22C55E]"][class~="text-white"],
+[data-theme="light"] [class~="bg-[#16A34A]"][class~="text-white"],
+[data-theme="light"] [class~="bg-red-500"][class~="text-white"],
+[data-theme="light"] [class~="bg-red-600"][class~="text-white"],
+[data-theme="light"] [class~="bg-[#3B82F6]"][class~="text-white"],
+[data-theme="light"] [class~="bg-[#6366F1]"][class~="text-white"],
+[data-theme="light"] [class~="bg-[#F59E0B]"][class~="text-white"] {
+  color: #ffffff !important;
+}
+
+/* Child text-white inside a solid coloured-bg parent */
+[data-theme="light"] [class~="bg-[#22C55E]"] [class~="text-white"],
+[data-theme="light"] [class~="bg-[#16A34A]"] [class~="text-white"],
+[data-theme="light"] [class~="bg-red-500"] [class~="text-white"],
+[data-theme="light"] [class~="bg-red-600"] [class~="text-white"],
+[data-theme="light"] [class~="bg-[#3B82F6]"] [class~="text-white"],
+[data-theme="light"] [class~="bg-[#6366F1]"] [class~="text-white"],
+[data-theme="light"] [class~="bg-[#F59E0B]"] [class~="text-white"] {
+  color: #ffffff !important;
+}
+
+/* ────────────────────────────────────────────────────
+   INPUTS & TEXTAREAS
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] input,
+[data-theme="light"] textarea {
+  color: #1E293B !important;
+  caret-color: #1E293B;
+}
+
+/* Placeholder — covers all placeholder-white/* variants */
+[data-theme="light"] ::placeholder {
+  color: rgba(15, 23, 42, 0.38) !important;
+  opacity: 1;
+}
+
+/* ────────────────────────────────────────────────────
+   NAVBAR GLASS
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] .navbar-glass {
+  background: rgba(232, 238, 245, 0.92) !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.09) !important;
+}
+
+/* Nav link text — hardcoded white in CSS, must be overridden here */
+[data-theme="light"] .nav-link-dark {
+  color: rgba(15, 23, 42, 0.70);
+}
+[data-theme="light"] .nav-link-dark:hover  { color: #15803D; }
+[data-theme="light"] .nav-link-dark.active { color: #15803D; border-bottom-color: #15803D; }
+
+/* ────────────────────────────────────────────────────
+   LEAFLET MAP POPUPS
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] .leaflet-popup-content-wrapper {
+  background: #F2F6FB !important;
+  color: #1E293B !important;
+  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.14), 0 0 12px rgba(34,197,94,0.07) !important;
+}
+[data-theme="light"] .leaflet-popup-tip {
+  background: #F2F6FB !important;
+  border-top-color:  rgba(15,23,42,0.10) !important;
+  border-left-color: rgba(15,23,42,0.10) !important;
+}
+[data-theme="light"] .leaflet-container a.leaflet-popup-close-button {
+  color: rgba(15, 23, 42, 0.40) !important;
+}
+[data-theme="light"] .leaflet-container a.leaflet-popup-close-button:hover {
+  color: #1E293B !important;
+}
+
+/* ────────────────────────────────────────────────────
+   SCROLLBAR
+   ──────────────────────────────────────────────────── */
+
+[data-theme="light"] ::-webkit-scrollbar-track { background: #D9E2ED; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #94A3B8; border-radius: 4px; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #64748B; }

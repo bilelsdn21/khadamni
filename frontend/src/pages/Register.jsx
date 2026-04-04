@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerUser } from '../api/auth';
+import useAuth from '../hooks/useAuth';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -35,6 +36,7 @@ function FlyToLocation({ position }) {
 
 export default function Register() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -50,7 +52,8 @@ export default function Register() {
     hourly_rate: '',
     experience_years: '',
     latitude: null,
-    longitude: null
+    longitude: null,
+    job_type: 'in_place',
 
   });
   const [agreed, setAgreed] = useState(false);
@@ -116,6 +119,10 @@ export default function Register() {
         setError('Please enter your years of experience');
         return;
       }
+      if (form.job_type !== 'remote' && (!form.latitude || !form.longitude)) {
+        setError('Please set your location on the map');
+        return;
+      }
     }
 
     setLoading(true);
@@ -134,17 +141,20 @@ export default function Register() {
         payload.bio = form.bio;
         payload.service_categories = form.service_categories;
         payload.experience_years = String(form.experience_years);
+        payload.job_type = form.job_type;
         if (form.latitude) payload.latitude = form.latitude;
         if (form.longitude) payload.longitude = form.longitude;
         if (form.hourly_rate) payload.hourly_rate = parseFloat(form.hourly_rate);
       }
 
       await registerUser(payload);
+      logout();
       navigate('/login');
     } catch (err) {
       const detail = err.response?.data?.detail;
       if (Array.isArray(detail)) {
-        setError('Please fill in all required fields correctly.');
+        const messages = detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ');
+        setError(`Validation error: ${messages}`);
       } else {
         setError(detail || 'Registration failed. Please try again.');
       }
@@ -264,8 +274,37 @@ export default function Register() {
                 className={inputClass + ' resize-none'}
               />
             </div>
-            {/* Location picker */}
+            {/* Job type */}
             <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Work type <span className="text-red-400">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'in_place', label: 'In-Place', icon: '📍', desc: 'Visit client location' },
+                  { value: 'remote',   label: 'Remote',   icon: '💻', desc: 'Work online / deliver' },
+                  { value: 'both',     label: 'Both',     icon: '🌐', desc: 'Flexible' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, job_type: opt.value, ...(opt.value === 'remote' ? { latitude: null, longitude: null } : {}) })}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-[16px] border-2 text-xs font-medium transition cursor-pointer ${
+                      form.job_type === opt.value
+                        ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
+                        : 'border-white/10 bg-[#0F172A] text-white/50 hover:border-white/30'
+                    }`}
+                  >
+                    <span className="text-lg">{opt.icon}</span>
+                    <span className="font-semibold">{opt.label}</span>
+                    <span className="text-[10px] opacity-70 text-center">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Location picker — hidden for remote-only providers */}
+            {form.job_type !== 'remote' && <div>
               <label className="block text-sm font-medium text-white/80 mb-1">
                 Your location <span className="text-red-400">*</span>
               </label>
@@ -347,7 +386,7 @@ export default function Register() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Service categories */}
             <div>

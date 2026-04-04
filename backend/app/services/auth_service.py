@@ -53,7 +53,8 @@ async def register_user(user_data: dict):
             "rating_avg": 0,
             "rating_count": 0,
             "total_jobs": 0,
-            "is_available": True, # For testing/initial appearance, or keep False if preferred
+            "is_available": True,
+            "job_type": user_data.get("job_type", "in_place"),
             "latitude": lat,
             "longitude": lng,
         }

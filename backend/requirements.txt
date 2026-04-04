@@ -13,3 +13,5 @@ jinja2
 python-dotenv
 fastapi-mail
 disposable-email-domains
+httpx
+groq
