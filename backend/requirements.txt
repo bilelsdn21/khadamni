@@ -6,12 +6,10 @@ pydantic-settings
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
-pyotp
-qrcode
-aiosmtplib
-jinja2
 python-dotenv
 fastapi-mail
+aiosmtplib
+jinja2
 disposable-email-domains
 httpx
 groq

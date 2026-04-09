@@ -1,209 +1,203 @@
 =====================================
-  KHADAMNI - Setup Guide
+  KHADAMNI — Setup Guide
 =====================================
-
-This guide will help you set up and run the Khadamni project locally.
 
 
 PREREQUISITES
 =============
-Make sure you have these installed on your machine:
+Make sure these are installed on your machine:
 
-1. Node.js (v18 or higher)
-   Download: https://nodejs.org/
+  1. Python 3.11+       https://www.python.org/downloads/
+     (check "Add Python to PATH" during install)
 
-2. Python (v3.10 or higher)
-   Download: https://www.python.org/downloads/
+  2. Node.js 18+        https://nodejs.org/  (choose LTS)
 
-3. MongoDB (v6 or higher)
-   Download: https://www.mongodb.com/try/download/community
-   Also install MongoDB Compass (GUI) — usually bundled with MongoDB.
+  3. MongoDB 6+         https://www.mongodb.com/try/download/community
+     Also install MongoDB Compass (offered during the same setup)
 
-4. Git
-   Download: https://git-scm.com/downloads
+  4. Git                https://git-scm.com/downloads
 
 
 STEP 1 — CLONE THE PROJECT
 ===========================
 
-   git clone <your-repo-url>
-   cd khadamni
+  git clone https://github.com/bilelsdn21/khadamni.git
+  cd khadamni
 
 
 STEP 2 — BACKEND SETUP
 =======================
 
-1. Open a terminal and go to the backend folder:
+  cd backend
 
-   cd backend
+  python -m venv venv
 
-2. Create a Python virtual environment:
+  # Activate the virtual environment:
+  Windows CMD:       venv\Scripts\activate
+  Windows Git Bash:  source venv/Scripts/activate
+  Mac/Linux:         source venv/bin/activate
 
-   python -m venv venv
-
-3. Activate the virtual environment:
-
-   Windows CMD:       venv\Scripts\activate
-   Windows Git Bash:  source venv/Scripts/activate
-   Mac/Linux:         source venv/bin/activate
-
-   You should see (venv) at the start of your terminal line.
-
-4. Install Python dependencies:
-
-   pip install -r requirements.txt
-
-5. Fix bcrypt version (required for passlib compatibility):
-
-   pip install bcrypt==4.0.1
-
-6. Create your .env file in the backend/ folder with these variables:
-
-   MONGODB_URL=mongodb://localhost:27017
-   DATABASE_NAME=khadamni
-   SECRET_KEY=change-me-in-production
-
-7. Make sure MongoDB is running on your machine, then start the server:
-
-   uvicorn app.main:app --reload
-
-8. Verify it works:
-
-   - Terminal should print: "Connected to MongoDB: khadamni"
-   - Open browser: http://localhost:8000/api/health  ->  {"status": "ok"}
-   - Open browser: http://localhost:8000/docs  ->  API documentation
+  pip install -r requirements.txt
 
 
-STEP 3 — FRONTEND SETUP
+STEP 3 — CREATE .env FILE
+==========================
+
+Inside the backend/ folder, create a file named exactly: .env
+
+  MONGODB_URL=mongodb://localhost:27017
+  DATABASE_NAME=khadamni
+  SECRET_KEY=replace_with_any_long_random_string
+  ALGORITHM=HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES=30
+  MAIL_USERNAME=your_gmail@gmail.com
+  MAIL_PASSWORD=your_gmail_app_password_16_chars
+  MAIL_FROM=your_gmail@gmail.com
+  MAIL_SERVER=smtp.gmail.com
+  MAIL_PORT=587
+  GROQ_API_KEY=your_groq_api_key
+
+HOW TO GET A GMAIL APP PASSWORD:
+  1. Go to myaccount.google.com → Security
+  2. Enable 2-Step Verification
+  3. Search "App Passwords" → create one for Mail
+  4. Copy the 16-character password → paste as MAIL_PASSWORD
+
+HOW TO GET A GROQ API KEY:
+  1. Go to https://console.groq.com
+  2. Sign up (free)
+  3. Create an API key → paste as GROQ_API_KEY
+
+
+STEP 4 — START THE BACKEND
+===========================
+
+  (make sure venv is active and you are in the backend/ folder)
+
+  uvicorn app.main:app --reload
+
+  You should see: INFO: Uvicorn running on http://127.0.0.1:8000
+  API docs:       http://localhost:8000/docs
+  Health check:   http://localhost:8000/api/health
+
+
+STEP 5 — FRONTEND SETUP
 ========================
 
-1. Open a NEW terminal (keep the backend running) and go to the frontend folder:
+Open a NEW terminal (keep the backend running):
 
-   cd frontend
+  cd frontend
+  npm install
+  npm run dev
 
-2. Install dependencies:
-
-   npm install
-
-3. Start the development server:
-
-   npm run dev
-
-4. Open your browser at:
-
-   http://localhost:5173
+  Open: http://localhost:5173
 
 
-RUNNING THE PROJECT
-===================
-You need TWO terminals running at the same time:
+EVERY TIME YOU RUN THE PROJECT
+===============================
 
-   Terminal 1 (Backend):
-      cd backend
-      venv\Scripts\activate        (Windows CMD)
-      uvicorn app.main:app --reload
+You need TWO terminals open simultaneously:
 
-   Terminal 2 (Frontend):
-      cd frontend
-      npm run dev
+  Terminal 1 — Backend:
+    cd backend
+    venv\Scripts\activate
+    uvicorn app.main:app --reload
 
-The frontend runs on http://localhost:5173
-The backend runs on http://localhost:8000
-The frontend proxies /api requests to the backend automatically.
+  Terminal 2 — Frontend:
+    cd frontend
+    npm run dev
+
+  Then open: http://localhost:5173
 
 
-TECH STACK
-==========
-Frontend:  React 19 + Vite + Tailwind CSS v4
-Backend:   FastAPI (Python) + MongoDB (Motor async driver)
-Maps:      Leaflet + OpenStreetMap (free)
-Auth:      JWT + bcrypt
-Realtime:  FastAPI WebSockets
+CREATING A MODERATOR ACCOUNT
+=============================
+
+1. Register a normal account at /register (any role)
+2. Open MongoDB Compass → connect to mongodb://localhost:27017
+3. Open the khadamni database → users collection
+4. Find the account you just created
+5. Edit the document: set  role: "moderator"
+6. Log in — you will be redirected to the Moderator Dashboard
+
+  OR use a test account (bypasses OTP):
+  Register with an email ending in @test.com
+  Then update the role in MongoDB Compass as above.
 
 
 PROJECT STRUCTURE
 =================
+
 khadamni/
-   backend/              Python FastAPI server
-      app/
-         main.py         App entry point + CORS + router registration
-         config.py       Environment settings (reads .env)
-         database.py     MongoDB connection (Motor)
-         models/         Pydantic schemas (user, provider, etc.)
-         routers/        API route handlers (auth, users, etc.)
-         services/       Business logic (auth_service, etc.)
-         websockets/     Real-time handlers (chat, notifications)
-         utils/          Helpers (security, geo, validators)
-      requirements.txt   Python dependencies
+  backend/
+    app/
+      main.py          FastAPI entry point, CORS, router registration
+      config.py        Loads .env variables
+      database.py      MongoDB async connection (Motor)
+      dependencies.py  get_current_user() JWT dependency
+      models/          Pydantic schemas (user, request, chat, etc.)
+      routers/         API endpoints (auth, providers, requests,
+                       chat, profile, portfolio, ratings, ai, moderator)
+      services/        Business logic per domain
+      utils/           security.py, email.py, validators.py
+      websockets/      ConnectionManager for real-time chat + GPS
+    uploads/           Stored avatar and portfolio images
+    requirements.txt
+    seed.py            Optional: seed test data
 
-   frontend/             React application
-      src/
-         pages/          Page components (Login, Register)
-         layouts/        Layout wrappers (AuthLayout)
-         components/     Reusable UI components
-         context/        React context (AuthContext)
-         hooks/          Custom React hooks (useAuth)
-         api/            Axios client + API calls
+  frontend/
+    src/
+      pages/           Login, Register, Map, Profile, Requests,
+                       ChatPage, TrackingPage, ModeratorDashboard
+      components/      SideDrawer, FloatingChat, ProtectedRoute,
+                       NotificationBell, PortfolioGrid, etc.
+      context/         AuthContext, ThemeContext
+      hooks/           useAuth, useNotifications
+      api/             axios.js, auth.js, request.js, chat.js,
+                       profile.js, portfolio.js, ratings.js
+      layouts/         AuthLayout
 
 
-CURRENT PROGRESS
-================
-Here is what has been implemented so far:
+TECH STACK
+==========
 
-Backend (FastAPI + MongoDB):
-   [DONE] config.py        - Loads environment variables from .env using pydantic-settings
-   [DONE] database.py      - Async MongoDB connection using Motor driver
-   [DONE] main.py          - FastAPI app with CORS, lifespan (DB connect/disconnect),
-                              health check endpoint, and auth router registration
-   [DONE] utils/security.py - Password hashing and verification using bcrypt
-   [DONE] models/user.py   - UserCreate schema (first_name, last_name, email, password, role, avatar)
-   [DONE] models/provider.py - ProviderCreate schema (bio, service_categories, hourly_rate)
-   [DONE] services/auth_service.py - Register logic (check duplicate email, hash password, save to DB)
-   [DONE] routers/auth.py  - POST /api/auth/register endpoint
-
-   Available API endpoints:
-      GET  /api/health          - Health check (returns {"status": "ok"})
-      POST /api/auth/register   - Register a new user (client or provider)
-
-Frontend (React + Vite + Tailwind):
-   [DONE] Login page        - Email + password form with dark theme
-   [DONE] Register page     - Full registration form with role selector (client/provider)
-   [DONE] AuthLayout        - Shared layout wrapper for auth pages
-   [DONE] AuthContext       - React context for auth state management
-   [DONE] Axios setup       - API client with JWT interceptors
-   [NOT CONNECTED] Frontend is not yet connected to backend endpoints
-
-Still to build:
-   - Login endpoint (JWT token generation)
-   - Token refresh and logout
-   - Temp email detection during registration
-   - User profiles and provider profiles
-   - Map-based provider discovery
-   - Service request flow
-   - Real-time chat (WebSocket)
-   - Live location tracking
-   - Ratings and reviews
-   - Job history
-   - Connect frontend to backend
+Frontend:   React 19 + Vite + Tailwind CSS v4
+Backend:    FastAPI (Python 3) + Motor (async MongoDB driver)
+Database:   MongoDB 6  (10 collections, 2dsphere geospatial index)
+Auth:       JWT (HS256) + bcrypt + 6-digit OTP + trusted device tokens
+Real-time:  FastAPI WebSocket (chat, GPS tracking, price negotiation)
+Maps:       Leaflet + react-leaflet + OpenStreetMap tiles
+Geocoding:  Nominatim (OpenStreetMap) — proxied through backend
+Routing:    OSRM (Open Source Routing Machine) — driving routes
+AI:         Groq cloud inference — Llama 3.3-70B
+Email:      fastapi-mail + Gmail SMTP
 
 
 TROUBLESHOOTING
 ===============
 
-1. "uvicorn is not recognized"
-   -> Your virtual environment is not activated. Run: venv\Scripts\activate
+"ModuleNotFoundError" in backend
+  → Activate venv first: venv\Scripts\activate
+  → Then: pip install -r requirements.txt
 
-2. "bcrypt.__about__ AttributeError"
-   -> Run: pip install bcrypt==4.0.1
+"Cannot connect to MongoDB"
+  → MongoDB is not running
+  → Search "MongoDB" in Windows Start menu and start the service
+  → Or install it from https://www.mongodb.com/try/download/community
 
-3. "Extra inputs are not permitted" (pydantic error)
-   -> Your .env file has variables that are not defined in config.py
-      Make sure they match exactly.
+"AI features not working"
+  → Check your GROQ_API_KEY in .env
+  → Get a free key at https://console.groq.com
 
-4. MongoDB connection error
-   -> Make sure MongoDB is installed and running.
-      Check in MongoDB Compass: connect to mongodb://localhost:27017
+Email OTP not arriving
+  → Check MAIL_PASSWORD is the App Password (16 chars, no spaces)
+  → Make sure 2-Step Verification is enabled on your Gmail account
 
-5. CORS error in browser
-   -> Make sure the backend is running on port 8000
-      and the frontend is running on port 5173
+CORS error in browser
+  → Make sure backend is running on port 8000
+  → Make sure frontend is running on port 5173
+  → Both must be running at the same time
+
+Port already in use
+  → Backend: find and kill the process using port 8000
+  → Frontend: kill node.exe in Task Manager, then npm run dev again
