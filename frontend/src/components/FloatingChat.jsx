@@ -38,8 +38,8 @@ export default function FloatingChat() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Hide on chat/tracking pages — after all hooks
-  if (hidden || !isAuthenticated) return null;
+  // Hide on chat/tracking pages and for moderators — after all hooks
+  if (hidden || !isAuthenticated || user?.role === 'moderator') return null;
 
   const statusStyle = {
     in_progress: { label: 'Active',     color: '#22C55E' },

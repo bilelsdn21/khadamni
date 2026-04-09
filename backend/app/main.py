@@ -12,6 +12,7 @@ from app.routers.profile import router as profile_router
 from app.routers.portfolio import router as portfolio_router
 from app.routers.chat import router as chat_router
 from app.routers.ai import router as ai_router
+from app.routers.moderator import router as moderator_router
 
 
 
@@ -47,4 +48,5 @@ app.include_router(profile_router)
 app.include_router(portfolio_router)
 app.include_router(chat_router)
 app.include_router(ai_router)
+app.include_router(moderator_router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

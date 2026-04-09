@@ -59,6 +59,9 @@ async def ai_report(
     with timeline, evidence, recommendation, and suggested action for a moderator.
     The report is persisted in the `reports` collection.
     """
+    if current_user.get("role") == "moderator":
+        raise HTTPException(status_code=403, detail="Moderators cannot submit reports")
+
     db = get_db()
 
     try:

@@ -14,11 +14,24 @@ L.Icon.Default.mergeOptions({
 });
 
 
-const SERVICE_CATEGORIES = [
+const IN_PLACE_CATEGORIES = [
   'Plumbing', 'Electrical', 'Cleaning', 'Painting',
-  'Tutoring', 'Delivery', 'IT Support', 'Carpentry',
-  'Gardening', 'Moving', 'Cooking', 'Other',
+  'Carpentry', 'Gardening', 'Moving', 'Other',
 ];
+
+const REMOTE_CATEGORIES = [
+  'Tutoring', 'IT Support', 'Cooking', 'Delivery',
+  'Graphic Design', 'Translation', 'Web Development',
+  'Video Editing', 'Data Entry', 'Other',
+];
+
+function getCategoriesForJobType(jobType) {
+  if (jobType === 'in_place') return IN_PLACE_CATEGORIES;
+  if (jobType === 'remote') return REMOTE_CATEGORIES;
+  // both — merge, deduplicate, keep Other last
+  const merged = [...new Set([...IN_PLACE_CATEGORIES, ...REMOTE_CATEGORIES])];
+  return [...merged.filter(c => c !== 'Other'), 'Other'];
+}
 function LocationPicker({ onLocationSet }) {
   useMapEvents({
     click(e) {
@@ -49,12 +62,12 @@ export default function Register() {
     // Provider-specific
     bio: '',
     service_categories: [],
+    custom_category: '',
     hourly_rate: '',
     experience_years: '',
     latitude: null,
     longitude: null,
     job_type: 'in_place',
-
   });
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
@@ -115,6 +128,10 @@ export default function Register() {
         setError('Please select at least one service category');
         return;
       }
+      if (form.service_categories.includes('Other') && !form.custom_category.trim()) {
+        setError('Please describe your profession in the "Other" field');
+        return;
+      }
       if (!form.experience_years) {
         setError('Please enter your years of experience');
         return;
@@ -145,6 +162,9 @@ export default function Register() {
         if (form.latitude) payload.latitude = form.latitude;
         if (form.longitude) payload.longitude = form.longitude;
         if (form.hourly_rate) payload.hourly_rate = parseFloat(form.hourly_rate);
+        if (form.service_categories.includes('Other') && form.custom_category.trim()) {
+          payload.custom_category = form.custom_category.trim();
+        }
       }
 
       await registerUser(payload);
@@ -288,7 +308,18 @@ export default function Register() {
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => setForm({ ...form, job_type: opt.value, ...(opt.value === 'remote' ? { latitude: null, longitude: null } : {}) })}
+                    onClick={() => {
+                      const newCategories = getCategoriesForJobType(opt.value);
+                      const filteredCats = form.service_categories.filter(c => newCategories.includes(c));
+                      setForm({
+                        ...form,
+                        job_type: opt.value,
+                        service_categories: filteredCats,
+                        // Clear custom_category if "Other" is no longer selected
+                        custom_category: filteredCats.includes('Other') ? form.custom_category : '',
+                        ...(opt.value === 'remote' ? { latitude: null, longitude: null } : {}),
+                      });
+                    }}
                     className={`flex flex-col items-center gap-1 py-3 px-2 rounded-[16px] border-2 text-xs font-medium transition cursor-pointer ${
                       form.job_type === opt.value
                         ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
@@ -390,24 +421,43 @@ export default function Register() {
 
             {/* Service categories */}
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-2">
+              <label className="block text-sm font-medium text-white/80 mb-1">
                 Service categories <span className="text-red-400">*</span>
               </label>
+              <p className="text-white/40 text-xs mb-2">
+                {form.job_type === 'in_place' && 'Showing in-place service categories'}
+                {form.job_type === 'remote' && 'Showing remote / online service categories'}
+                {form.job_type === 'both' && 'Showing all categories'}
+              </p>
               <div className="flex flex-wrap gap-2">
-                {SERVICE_CATEGORIES.map((cat) => (
+                {getCategoriesForJobType(form.job_type).map((cat) => (
                   <button
                     key={cat} type="button"
                     onClick={() => toggleCategory(cat)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
                       form.service_categories.includes(cat)
-                        ? 'bg-[#22C55E] text-white'
+                        ? cat === 'Other' ? 'bg-amber-500 text-white' : 'bg-[#22C55E] text-white'
                         : 'bg-[#0F172A] text-white/60 border border-white/10 hover:border-[#22C55E]/50 hover:text-[#4ADE80]'
                     }`}
                   >
-                    {cat}
+                    {cat === 'Other' ? '✏️ Other' : cat}
                   </button>
                 ))}
               </div>
+
+              {/* "Other" free-text field */}
+              {form.service_categories.includes('Other') && (
+                <div className="mt-3">
+                  <input
+                    type="text"
+                    value={form.custom_category}
+                    onChange={(e) => setForm({ ...form, custom_category: e.target.value })}
+                    placeholder="Describe your profession (e.g. Piano teacher, Tattoo artist...)"
+                    className={inputClass}
+                    maxLength={80}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Experience + Rate row */}

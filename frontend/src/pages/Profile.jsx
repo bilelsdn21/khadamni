@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useRef } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { Navigate, useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -8,6 +8,7 @@ import api from '../api/axios';
 import { removeDevices } from '../api/auth';
 import { getProfile, updateProfile, getPublicProfileById, uploadAvatar, changePassword } from '../api/profile';
 import { getPortfolio, addPortfolioItem, deletePortfolioItem } from '../api/portfolio';
+import { createRequest } from '../api/request';
 import { getUserRatings } from '../api/ratings';
 import SideDrawer from '../components/SideDrawer';
 import ThemeToggle from '../components/ThemeToggle';
@@ -19,11 +20,21 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const SERVICE_CATEGORIES = [
+const IN_PLACE_CATEGORIES = [
   'Plumbing', 'Electrical', 'Cleaning', 'Painting',
-  'Tutoring', 'Delivery', 'IT Support', 'Carpentry',
-  'Gardening', 'Moving', 'Cooking', 'Other',
+  'Carpentry', 'Gardening', 'Moving', 'Other',
 ];
+const REMOTE_CATEGORIES = [
+  'Tutoring', 'IT Support', 'Cooking', 'Delivery',
+  'Graphic Design', 'Translation', 'Web Development',
+  'Video Editing', 'Data Entry', 'Other',
+];
+function getCategoriesForJobType(jobType) {
+  if (jobType === 'in_place') return IN_PLACE_CATEGORIES;
+  if (jobType === 'remote') return REMOTE_CATEGORIES;
+  const merged = [...new Set([...IN_PLACE_CATEGORIES, ...REMOTE_CATEGORIES])];
+  return [...merged.filter(c => c !== 'Other'), 'Other'];
+}
 
 function LocationPicker({ onLocationSet }) {
   useMapEvents({ click(e) { onLocationSet([e.latlng.lat, e.latlng.lng]); } });
@@ -73,6 +84,13 @@ export default function Profile() {
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwSaving, setPwSaving] = useState(false);
+
+  // Request modal (for clients viewing a provider's profile)
+  const [reqModalOpen, setReqModalOpen] = useState(false);
+  const [reqDesc, setReqDesc] = useState('');
+  const [reqSending, setReqSending] = useState(false);
+  const [reqSent, setReqSent] = useState(false);
+  const [reqError, setReqError] = useState('');
 
   const isOwnProfile = !id || id === user?._id;
 
@@ -147,11 +165,12 @@ export default function Profile() {
       phone: profileData?.phone || '',
       bio: pp.bio || profileData?.bio || '',
       service_categories: pp.service_categories || profileData?.service_categories || [],
+      custom_category: pp.custom_category || '',
       hourly_rate: pp.hourly_rate || profileData?.hourly_rate || '',
       experience_years: pp.experience_years || profileData?.experience_years || '',
       latitude: pp.latitude || profileData?.latitude || null,
       longitude: pp.longitude || profileData?.longitude || null,
-      job_type: pp.job_type || 'in_place',
+      job_type: pp.job_type || 'in_place', // read-only — locked at registration
     });
     const lat = pp.latitude || profileData?.latitude;
     const lng = pp.longitude || profileData?.longitude;
@@ -164,15 +183,27 @@ export default function Profile() {
     setEditLocationSearch(val);
     if (val.length < 2) { setEditLocationResults([]); return; }
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5`);
-      const data = await res.json();
-      setEditLocationResults(data);
-    } catch (e) { console.error(e); }
+      // Use backend proxy to avoid CORS and browser geolocation permission prompts
+      const res = await api.get(`/providers/geocode?q=${encodeURIComponent(val)}`);
+      setEditLocationResults(res.data);
+    } catch (e) {
+      setEditLocationResults([]);
+    }
   };
 
   const handleSave = async () => {
-    setSaving(true);
     setSaveError('');
+    if (isProvider) {
+      if (!editForm.service_categories?.length) {
+        setSaveError('Please select at least one service category.');
+        return;
+      }
+      if (editForm.service_categories.includes('Other') && !editForm.custom_category?.trim()) {
+        setSaveError('Please describe your profession in the "Other" field.');
+        return;
+      }
+    }
+    setSaving(true);
     try {
       const payload = {
         first_name: editForm.first_name || undefined,
@@ -180,9 +211,11 @@ export default function Profile() {
         phone: editForm.phone || undefined,
         bio: editForm.bio || undefined,
         service_categories: editForm.service_categories?.length ? editForm.service_categories : undefined,
+        custom_category: editForm.service_categories?.includes('Other') && editForm.custom_category?.trim()
+          ? editForm.custom_category.trim()
+          : undefined,
         hourly_rate: editForm.hourly_rate ? parseFloat(editForm.hourly_rate) : undefined,
         experience_years: editForm.experience_years ? String(editForm.experience_years) : undefined,
-        job_type: editForm.job_type || undefined,
         latitude: editForm.latitude || undefined,
         longitude: editForm.longitude || undefined,
       };
@@ -262,6 +295,22 @@ export default function Profile() {
       setPwError(err.response?.data?.detail || 'Failed to change password');
     } finally {
       setPwSaving(false);
+    }
+  };
+
+  const handleSendRequest = async () => {
+    if (!reqDesc.trim()) return;
+    setReqSending(true);
+    setReqError('');
+    try {
+      await createRequest({ provider_id: id, description: reqDesc.trim() });
+      setReqSent(true);
+      setReqDesc('');
+      setTimeout(() => { setReqSent(false); setReqModalOpen(false); }, 2000);
+    } catch (err) {
+      setReqError(err.response?.data?.detail || 'Failed to send request. Try again.');
+    } finally {
+      setReqSending(false);
     }
   };
 
@@ -347,9 +396,14 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-xs text-white/60 mb-2">Service Categories</label>
+                <label className="block text-xs text-white/60 mb-1">Service Categories</label>
+                <p className="text-white/30 text-[10px] mb-2">
+                  {editForm.job_type === 'in_place' && 'In-place service categories'}
+                  {editForm.job_type === 'remote' && 'Remote / online service categories'}
+                  {editForm.job_type === 'both' && 'All service categories'}
+                </p>
                 <div className="flex flex-wrap gap-2">
-                  {SERVICE_CATEGORIES.map(cat => (
+                  {getCategoriesForJobType(editForm.job_type).map(cat => (
                     <button key={cat} type="button"
                       onClick={() => setEditForm(prev => ({
                         ...prev,
@@ -359,12 +413,22 @@ export default function Profile() {
                       }))}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
                         editForm.service_categories.includes(cat)
-                          ? 'bg-[#22C55E] text-white'
+                          ? cat === 'Other' ? 'bg-amber-500 text-white' : 'bg-[#22C55E] text-white'
                           : 'bg-[#0F172A] text-white/60 border border-white/10 hover:border-[#22C55E]/50'
                       }`}
-                    >{cat}</button>
+                    >{cat === 'Other' ? '✏️ Other' : cat}</button>
                   ))}
                 </div>
+                {editForm.service_categories.includes('Other') && (
+                  <input
+                    type="text"
+                    className={inputClass + ' mt-3'}
+                    value={editForm.custom_category}
+                    onChange={e => setEditForm({ ...editForm, custom_category: e.target.value })}
+                    placeholder="Describe your profession (e.g. Piano teacher, Tattoo artist...)"
+                    maxLength={80}
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -382,26 +446,17 @@ export default function Profile() {
                 </div>
               </div>
 
-              {/* Work type */}
+              {/* Work type — locked at registration */}
               <div>
                 <label className="block text-xs text-white/60 mb-2">Work Type</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'in_place', label: 'In-Place', icon: '📍' },
-                    { value: 'remote',   label: 'Remote',   icon: '💻' },
-                    { value: 'both',     label: 'Both',     icon: '🌐' },
-                  ].map(opt => (
-                    <button key={opt.value} type="button"
-                      onClick={() => setEditForm({ ...editForm, job_type: opt.value })}
-                      className={`flex items-center justify-center gap-1.5 py-2 rounded-[12px] border text-xs font-semibold transition-all ${
-                        editForm.job_type === opt.value
-                          ? 'border-[#22C55E] bg-[#22C55E]/10 text-[#4ADE80]'
-                          : 'border-white/10 bg-[#0F172A] text-white/50 hover:border-white/20'
-                      }`}
-                    >
-                      <span>{opt.icon}</span>{opt.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] bg-[#0F172A] border border-white/10 w-fit">
+                  <span>
+                    {editForm.job_type === 'in_place' ? '📍' : editForm.job_type === 'remote' ? '💻' : '🌐'}
+                  </span>
+                  <span className="text-xs font-semibold text-white/70 capitalize">
+                    {editForm.job_type === 'in_place' ? 'In-Place' : editForm.job_type === 'remote' ? 'Remote' : 'Both'}
+                  </span>
+                  <span className="text-[10px] text-white/30 ml-1">· locked at registration</span>
                 </div>
               </div>
 
@@ -573,6 +628,17 @@ export default function Profile() {
                       Edit Profile
                     </button>
                   )}
+                  {!isOwnProfile && isProvider && user?.role === 'client' && (
+                    <button
+                      onClick={() => setReqModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#4ADE80] text-xs font-semibold hover:bg-[#22C55E]/30 transition-all shadow-lg shadow-[#22C55E]/10"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Send Request
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -636,9 +702,15 @@ export default function Profile() {
                   <div className="mb-4">
                     <p className="text-xs text-white/40 mb-1">Service Categories</p>
                     <div className="flex flex-wrap gap-2">
-                      {(profileData?.provider_profile?.service_categories || profileData?.service_categories || []).map(cat => (
-                        <span key={cat} className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20">{cat}</span>
-                      ))}
+                      {(profileData?.provider_profile?.service_categories || profileData?.service_categories || []).map(cat => {
+                        const customCat = profileData?.provider_profile?.custom_category;
+                        const label = cat === 'Other' && customCat ? customCat : cat;
+                        return (
+                          <span key={cat} className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20">
+                            {label}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
@@ -781,12 +853,19 @@ export default function Profile() {
                   )}
                 </div>
 
-                {/* REVIEWS */}
-                {ratings.length > 0 && (
-                  <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
-                    <h2 className="text-lg font-bold mb-4">Reviews</h2>
+                {/* REVIEWS — always visible for providers */}
+                <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold">Reviews</h2>
+                    {ratings.length > 0 && (
+                      <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+                        {ratings.length} review{ratings.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  {ratings.length > 0 ? (
                     <div className="space-y-3">
-                      {ratings.slice(0, 5).map(r => (
+                      {ratings.slice(0, 10).map(r => (
                         <div key={r._id} className="p-3 rounded-[12px] bg-[#0F172A] border border-white/5">
                           <div className="flex items-center gap-2 mb-1">
                             <div className="flex gap-0.5">
@@ -796,14 +875,23 @@ export default function Profile() {
                                 </svg>
                               ))}
                             </div>
-                            <span className="text-white/30 text-[10px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                            <span className="text-white/30 text-[10px]">
+                              {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+                            </span>
                           </div>
-                          {r.comment && <p className="text-white/60 text-xs">{r.comment}</p>}
+                          {r.comment && <p className="text-white/60 text-xs leading-relaxed">{r.comment}</p>}
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="h-32 flex flex-col items-center justify-center gap-2">
+                      <svg className="w-8 h-8 text-white/10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                      <p className="text-white/25 text-sm">No reviews yet</p>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="bg-[#1E293B] border border-white/10 p-6 rounded-[20px]">
@@ -839,6 +927,63 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* ── REQUEST MODAL ──────────────────────────────────────────────────── */}
+      {reqModalOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center px-4"
+          style={{ backgroundColor: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)' }}>
+          <div className="bg-[#1E293B] border border-white/10 rounded-[24px] p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-lg font-bold text-white">Send a Request</h2>
+                <p className="text-white/40 text-xs mt-0.5">to {fullName}</p>
+              </div>
+              <button
+                onClick={() => { setReqModalOpen(false); setReqDesc(''); setReqError(''); setReqSent(false); }}
+                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {reqSent ? (
+              <div className="py-8 flex flex-col items-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-[#22C55E]/20 border border-[#22C55E]/40 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-[#4ADE80]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-[#4ADE80] font-semibold">Request sent!</p>
+                <p className="text-white/40 text-xs text-center">The provider will review and respond shortly.</p>
+              </div>
+            ) : (
+              <>
+                {reqError && (
+                  <div className="mb-4 p-3 rounded-[12px] bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
+                    {reqError}
+                  </div>
+                )}
+                <textarea
+                  value={reqDesc}
+                  onChange={e => setReqDesc(e.target.value)}
+                  placeholder="Describe what you need (e.g. Fix a leaking pipe in the kitchen, need it done this week...)"
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-[16px] bg-[#0F172A] border border-white/10 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#22C55E] resize-none text-sm mb-4 transition"
+                />
+                <button
+                  onClick={handleSendRequest}
+                  disabled={reqSending || !reqDesc.trim()}
+                  className="w-full py-3 rounded-[16px] bg-gradient-to-r from-[#22C55E] to-[#4ADE80] text-white font-semibold text-sm disabled:opacity-40 hover:from-[#16A34A] hover:to-[#22C55E] transition-all shadow-lg shadow-[#22C55E]/20"
+                >
+                  {reqSending ? 'Sending...' : 'Send Request'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

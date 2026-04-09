@@ -5,14 +5,18 @@ import useAuth from '../hooks/useAuth';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [remember, setRemember] = useState(false);
 
+  const redirectAfterLogin = (role) => {
+    navigate(role === 'moderator' ? '/moderator' : '/map');
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/map');
+      redirectAfterLogin(user?.role);
     }
   }, [isAuthenticated, navigate]);
   const [error, setError] = useState('');
@@ -47,7 +51,7 @@ export default function Login() {
       if (res.data.access_token) {
         // trusted device — skip OTP
         login(res.data.user, res.data.access_token, null);
-        navigate('/map');
+        redirectAfterLogin(res.data.user?.role);
       } else {
         setOtpStep(true);
       }
@@ -78,7 +82,7 @@ export default function Login() {
       }
 
       login(res.data.user, res.data.access_token, res.data.refresh_token);
-      navigate('/map');
+      redirectAfterLogin(res.data.user?.role);
     } catch (err) {
       setError(formatError(err));
     } finally {

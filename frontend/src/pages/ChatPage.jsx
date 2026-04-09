@@ -693,16 +693,21 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input Bar */}
-      {!bothConfirmed && !isCancelled && (
+      {/* Input Bar — stays open until cancelled */}
+      {!isCancelled && (
         <div className="border-t border-white/10 bg-[#1E293B] px-4 py-3">
+          {isCompleted && (
+            <p className="text-white/30 text-[11px] text-center mb-2">
+              Job completed · Chat stays open in case you need anything
+            </p>
+          )}
           <div className="flex gap-2">
             <input
               type="text"
               value={inputText}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
-              placeholder="Type a message..."
+              placeholder={isCompleted ? "Follow up if needed..." : "Type a message..."}
               className="flex-1 bg-[#0F172A] border border-white/10 rounded-[20px] px-4 py-2.5 text-white placeholder-white/40 focus:outline-none focus:border-[#22C55E]/50"
             />
             <button

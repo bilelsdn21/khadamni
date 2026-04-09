@@ -35,12 +35,16 @@ async def create(data: ServiceRequestCreate, current_user: dict = Depends(get_cu
 
 @router.get("/my")
 async def my_requests(status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] == "moderator":
+        raise HTTPException(status_code=403, detail="Moderators do not have service requests")
     requests = await get_my_requests(current_user["_id"], current_user["role"], status)
     return requests
 
 
 @router.get("/{request_id}")
 async def get_one(request_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] == "moderator":
+        raise HTTPException(status_code=403, detail="Moderators cannot access service request details")
     result = await get_request_by_id(request_id, current_user["_id"])
     if isinstance(result, str):
         _map_error(result)

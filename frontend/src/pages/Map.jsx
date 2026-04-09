@@ -100,6 +100,13 @@ const getServiceIconUrl = (serviceName) => {
   if (s.includes('ac ') || s.includes('air cond')) return 'https://img.icons8.com/color/48/air-conditioner.png';
   if (s.includes('lock') || s.includes('key')) return 'https://img.icons8.com/color/48/locksmith.png';
 
+  // Remote-specific categories
+  if (s.includes('graphic') || s.includes('design')) return 'https://img.icons8.com/color/48/design.png';
+  if (s.includes('translat')) return 'https://img.icons8.com/color/48/translation.png';
+  if (s.includes('web') || s.includes('develop')) return 'https://img.icons8.com/color/48/code.png';
+  if (s.includes('video')) return 'https://img.icons8.com/color/48/video-editing.png';
+  if (s.includes('data')) return 'https://img.icons8.com/color/48/data-sheet.png';
+
   return 'https://img.icons8.com/color/48/services.png'; // Default for "Other"
 };
 
@@ -118,6 +125,12 @@ const SERVICE_LIST = [
   { name: 'Cooking', icon: 'https://cdn-icons-png.flaticon.com/512/5600/5600920.png', color: '#F97316' },
   { name: 'AC Repair', icon: 'https://img.icons8.com/color/48/air-conditioner.png', color: '#38BDF8' },
   { name: 'Locksmith', icon: 'https://img.icons8.com/color/48/locksmith.png', color: '#475569' },
+  // Remote-specific
+  { name: 'Graphic Design', icon: 'https://img.icons8.com/color/48/design.png', color: '#EC4899' },
+  { name: 'Translation', icon: 'https://img.icons8.com/color/48/translation.png', color: '#0EA5E9' },
+  { name: 'Web Development', icon: 'https://img.icons8.com/color/48/code.png', color: '#6366F1' },
+  { name: 'Video Editing', icon: 'https://img.icons8.com/color/48/video-editing.png', color: '#EF4444' },
+  { name: 'Data Entry', icon: 'https://img.icons8.com/color/48/data-sheet.png', color: '#64748B' },
 ];
 
 const createProviderIcon = (provider) => {
@@ -156,6 +169,7 @@ export default function Map() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const isProvider = user?.role === 'provider';
+  const isClient = user?.role === 'client';
   const isRemoteProvider = isProvider && user?.provider_profile?.job_type === 'remote';
   const tileUrl = theme === 'light'
     ? 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png'
@@ -198,7 +212,8 @@ export default function Map() {
   });
   const [isSearching, setIsSearching] = useState(false);
   const [locationSearchResults, setLocationSearchResults] = useState([]);
-  // AI search bar (clients only)
+  // AI search bar (clients only) — state is persisted in sessionStorage so
+  // navigating to a provider profile and coming back restores the suggestions.
   const [aiOpen, setAiOpen] = useState(false);
   const [aiQuery, setAiQuery] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -206,7 +221,7 @@ export default function Map() {
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [aiRemoteSuggestions, setAiRemoteSuggestions] = useState([]);
 
-  const REMOTE_CATEGORIES = new Set(['IT Support', 'Tutoring', 'Cooking', 'Delivery', 'Other']);
+  const REMOTE_CATEGORIES = new Set(['IT Support', 'Tutoring', 'Cooking', 'Delivery', 'Graphic Design', 'Translation', 'Web Development', 'Video Editing', 'Data Entry', 'Other']);
   const [overlayQuery, setOverlayQuery] = useState('');
   const [overlayResults, setOverlayResults] = useState([]);
   const [overlayPicked, setOverlayPicked] = useState(null);
@@ -230,6 +245,23 @@ export default function Map() {
       }
     }, 400);
   };
+
+  // Restore AI panel state when returning from a provider profile page
+  useEffect(() => {
+    if (!isClient) return;
+    try {
+      const saved = sessionStorage.getItem('ai_panel_state');
+      if (!saved) return;
+      const { query, result, suggestions, remoteSuggestions } = JSON.parse(saved);
+      sessionStorage.removeItem('ai_panel_state');
+      setAiOpen(true);
+      setAiQuery(query || '');
+      setAiResult(result || null);
+      setAiSuggestions(suggestions || []);
+      setAiRemoteSuggestions(remoteSuggestions || []);
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('recent_map_searches', JSON.stringify(recentSearches.slice(0, 5)));
@@ -720,9 +752,21 @@ export default function Map() {
               <NotificationBell />
               <ThemeToggle />
               {/* AI magic wand button — clients only */}
-              {!isProvider && (
+              {isClient && (
                 <button
-                  onClick={() => { setAiOpen(o => !o); setAiResult(null); setAiQuery(''); setAiSuggestions([]); setAiRemoteSuggestions([]); }}
+                  onClick={() => {
+                    if (aiOpen) {
+                      // Closing — clear everything
+                      setAiOpen(false);
+                      setAiResult(null);
+                      setAiQuery('');
+                      setAiSuggestions([]);
+                      setAiRemoteSuggestions([]);
+                      sessionStorage.removeItem('ai_panel_state');
+                    } else {
+                      setAiOpen(true);
+                    }
+                  }}
                   title="Describe what you need — AI will find the right category"
                   className={`w-10 h-10 rounded-[20px] backdrop-blur-md border shadow-lg flex items-center justify-center transition-all duration-300 text-base ${aiOpen ? 'bg-[#22C55E] border-[#22C55E] text-white' : 'bg-[#1E293B]/90 border-white/10 text-white/60 hover:text-[#22C55E] hover:border-[#22C55E]/40'}`}
                 >
@@ -902,7 +946,7 @@ export default function Map() {
         </div>
 
         {/* AI SEARCH PANEL — clients only, visible when aiOpen */}
-        {!isProvider && aiOpen && (
+        {isClient && aiOpen && (
           <div className="pointer-events-auto w-full max-w-md">
             <div className="bg-[#1E293B]/95 backdrop-blur-md border border-[#22C55E]/30 rounded-[20px] shadow-2xl overflow-hidden">
               {/* Input row */}
@@ -966,10 +1010,9 @@ export default function Map() {
                     <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
                       <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">📍 Best matches near you</p>
                       {aiSuggestions.map(p => (
-                        <button
+                        <div
                           key={p._id}
-                          onClick={() => { setSelectedProvider(p); setAiOpen(false); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-white/5 hover:bg-[#22C55E]/10 hover:border-[#22C55E]/30 border border-transparent transition-all duration-200 text-left"
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-white/5 border border-transparent"
                         >
                           <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                             <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
@@ -986,8 +1029,27 @@ export default function Map() {
                               {p.total_jobs > 0 && <span className="text-white/30 text-[10px]">{p.total_jobs} jobs</span>}
                             </div>
                           </div>
-                          <span className="text-[#4ADE80] text-[10px] font-semibold flex-shrink-0">Request →</span>
-                        </button>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <Link
+                              to={`/provider/${p._id}`}
+                              onClick={() => {
+                                sessionStorage.setItem('ai_panel_state', JSON.stringify({
+                                  query: aiQuery, result: aiResult,
+                                  suggestions: aiSuggestions, remoteSuggestions: aiRemoteSuggestions,
+                                }));
+                              }}
+                              className="px-2 py-1 rounded-[8px] bg-white/10 border border-white/15 text-white/60 text-[10px] font-semibold hover:bg-white/20 transition-all"
+                            >
+                              Profile
+                            </Link>
+                            <button
+                              onClick={() => { setSelectedProvider(p); setAiOpen(false); }}
+                              className="px-2 py-1 rounded-[8px] bg-[#22C55E]/20 border border-[#22C55E]/30 text-[#4ADE80] text-[10px] font-semibold hover:bg-[#22C55E]/30 transition-all"
+                            >
+                              Request
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -997,10 +1059,9 @@ export default function Map() {
                     <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
                       <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">🌐 Available remotely</p>
                       {aiRemoteSuggestions.map(p => (
-                        <button
+                        <div
                           key={p._id}
-                          onClick={() => { setSelectedProvider(p); setViewMode('remote'); setAiOpen(false); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-[#6366F1]/5 hover:bg-[#6366F1]/15 hover:border-[#6366F1]/30 border border-transparent transition-all duration-200 text-left"
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-[#6366F1]/5 border border-transparent"
                         >
                           <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-[#6366F1]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
                             <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
@@ -1016,8 +1077,27 @@ export default function Map() {
                               <span className="text-[#818CF8] text-[10px]">Works from anywhere</span>
                             </div>
                           </div>
-                          <span className="text-[#818CF8] text-[10px] font-semibold flex-shrink-0">Request →</span>
-                        </button>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <Link
+                              to={`/provider/${p._id}`}
+                              onClick={() => {
+                                sessionStorage.setItem('ai_panel_state', JSON.stringify({
+                                  query: aiQuery, result: aiResult,
+                                  suggestions: aiSuggestions, remoteSuggestions: aiRemoteSuggestions,
+                                }));
+                              }}
+                              className="px-2 py-1 rounded-[8px] bg-white/10 border border-white/15 text-white/60 text-[10px] font-semibold hover:bg-white/20 transition-all"
+                            >
+                              Profile
+                            </Link>
+                            <button
+                              onClick={() => { setSelectedProvider(p); setViewMode('remote'); setAiOpen(false); }}
+                              className="px-2 py-1 rounded-[8px] bg-[#6366F1]/20 border border-[#6366F1]/30 text-[#818CF8] text-[10px] font-semibold hover:bg-[#6366F1]/30 transition-all"
+                            >
+                              Request
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1031,10 +1111,13 @@ export default function Map() {
         <div className="relative pointer-events-auto mt-2">
           <button
             onClick={() => setCategoryPanelOpen(p => !p)}
-            className="flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#1E293B]/90 backdrop-blur-md border border-white/10 shadow-lg text-sm font-semibold transition-all duration-200 hover:border-[#22C55E]/50"
+            className={`flex items-center gap-2 px-4 py-2 rounded-[20px] bg-[#1E293B]/90 backdrop-blur-md border shadow-lg text-sm font-semibold transition-all duration-200 hover:border-[#22C55E]/50 ${
+              categoryFilter === 'All' ? 'border-white/10' : 'border-[#22C55E]/40'
+            }`}
             style={{
-              color: categoryFilter === 'All' ? 'rgba(255,255,255,0.7)' : '#4ADE80',
-              borderColor: categoryFilter === 'All' ? 'rgba(255,255,255,0.1)' : 'rgba(34,197,94,0.4)',
+              color: categoryFilter === 'All'
+                ? (theme === 'light' ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.7)')
+                : '#16A34A',
             }}
           >
             {categoryFilter !== 'All' && (
@@ -1069,19 +1152,19 @@ export default function Map() {
                       title={service.name}
                       className="flex flex-col items-center gap-1 p-2 rounded-[10px] transition-all duration-200 hover:scale-105 active:scale-95"
                       style={{
-                        backgroundColor: isActive ? `${service.color}25` : 'rgba(255,255,255,0.04)',
+                        backgroundColor: isActive ? `${service.color}25` : theme === 'light' ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.04)',
                         border: `1px solid ${isActive ? service.color + '60' : 'transparent'}`,
                       }}
                     >
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center p-1.5"
-                        style={{ backgroundColor: isActive ? `${service.color}30` : 'rgba(255,255,255,0.07)' }}
+                        style={{ backgroundColor: isActive ? `${service.color}30` : theme === 'light' ? 'rgba(15,23,42,0.07)' : 'rgba(255,255,255,0.07)' }}
                       >
                         <img src={service.icon} alt={service.name} className="w-full h-full object-contain" />
                       </div>
                       <span
                         className="text-[9px] font-semibold text-center leading-tight"
-                        style={{ color: isActive ? '#4ADE80' : 'rgba(255,255,255,0.5)' }}
+                        style={{ color: isActive ? '#16A34A' : theme === 'light' ? 'rgba(15,23,42,0.55)' : 'rgba(255,255,255,0.5)' }}
                       >
                         {service.name}
                       </span>
@@ -1187,13 +1270,19 @@ export default function Map() {
                       <h3 className="font-bold text-white/90 text-sm leading-tight">
                         {provider.full_name || 'Provider'}
                       </h3>
-                      <p className="text-[10px] text-[#4ADE80] mt-0.5 capitalize font-medium">{provider.service_categories?.[0] || 'Expert'}</p>
+                      <p className="text-[10px] text-[#4ADE80] mt-0.5 capitalize font-medium">
+                        {provider.service_categories?.[0] === 'Other' && provider.custom_category
+                          ? provider.custom_category
+                          : provider.service_categories?.[0] || 'Expert'}
+                      </p>
                     </div>
                   </div>
 
                   <div className="mb-4">
                     <p className="text-xs text-white/60 mb-1">
-                      <strong className="text-white/80 font-medium">Services:</strong> {provider.service_categories && provider.service_categories.length > 0 ? provider.service_categories.join(', ') : 'General Maintenance'}
+                      <strong className="text-white/80 font-medium">Services:</strong> {provider.service_categories && provider.service_categories.length > 0
+                        ? provider.service_categories.map(c => c === 'Other' && provider.custom_category ? provider.custom_category : c).join(', ')
+                        : 'General Maintenance'}
                     </p>
                     <p className="text-xs text-white/60 flex items-center gap-1">
                       <strong className="text-white/80 font-medium">Rating:</strong>
@@ -1335,7 +1424,7 @@ export default function Map() {
                     <div className="flex flex-wrap gap-1.5">
                       {(provider.service_categories || []).slice(0, 3).map(cat => (
                         <span key={cat} className="px-2 py-0.5 rounded-full bg-[#0F172A] border border-white/10 text-white/60 text-[10px] font-medium">
-                          {cat}
+                          {cat === 'Other' && provider.custom_category ? provider.custom_category : cat}
                         </span>
                       ))}
                       {(provider.service_categories || []).length > 3 && (
@@ -1401,8 +1490,8 @@ export default function Map() {
         </div>
       )}
 
-      {/* Request modal */}
-      {selectedProvider && (
+      {/* Request modal — clients only */}
+      {selectedProvider && isClient && (
         <div style={{
           position: 'fixed', inset: 0,
           backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 2000,
@@ -1437,7 +1526,7 @@ export default function Map() {
                   <div>
                     <div style={{ color: 'white', fontWeight: '600', fontSize: '15px' }}>{selectedProvider.full_name}</div>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                      {selectedProvider.service_categories?.join(' · ')}
+                      {selectedProvider.service_categories?.map(c => c === 'Other' && selectedProvider.custom_category ? selectedProvider.custom_category : c).join(' · ')}
                     </div>
                   </div>
                 </div>

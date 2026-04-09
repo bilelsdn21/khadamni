@@ -55,7 +55,7 @@ async def update_my_profile(user_id: str, role: str, data: dict):
     user_fields = {"first_name", "last_name", "phone", "latitude", "longitude", "avatar"}
 
     # Fields that belong to the provider_profiles collection
-    provider_fields = {"bio", "service_categories", "hourly_rate", "experience_years", "is_available", "job_type"}
+    provider_fields = {"bio", "service_categories", "custom_category", "hourly_rate", "experience_years", "is_available"}
 
     user_update = {k: v for k, v in data.items() if k in user_fields}
     provider_update = {k: v for k, v in data.items() if k in provider_fields}

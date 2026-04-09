@@ -21,3 +21,25 @@ async def send_otp_email(email: str, otp_code: str):
     )
     fm = FastMail(conf)
     await fm.send_message(message)
+
+
+async def send_suspension_email(email: str, reason: str, until=None):
+    if until:
+        until_str = until.strftime("%B %d, %Y at %H:%M UTC")
+        duration_text = f"until {until_str}"
+    else:
+        duration_text = "permanently"
+
+    body = (
+        f"Your Khadamni account has been suspended {duration_text}.\n\n"
+        f"Reason: {reason}\n\n"
+        f"If you believe this is a mistake, please contact support."
+    )
+    message = MessageSchema(
+        subject="Your Khadamni account has been suspended",
+        recipients=[email],
+        body=body,
+        subtype="plain"
+    )
+    fm = FastMail(conf)
+    await fm.send_message(message)

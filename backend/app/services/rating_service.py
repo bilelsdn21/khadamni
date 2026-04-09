@@ -82,7 +82,9 @@ async def get_user_ratings(user_id: str):
 
     for r in ratings:
         r["_id"] = str(r["_id"])
-        r["job_id"] = str(r["job_id"])
+        # Support both field names: "job_id" (app-submitted) and "request_id" (seed/legacy)
+        job_ref = r.get("job_id") or r.get("request_id")
+        r["job_id"] = str(job_ref) if job_ref else ""
         r["rater_id"] = str(r["rater_id"])
         r["rated_id"] = str(r["rated_id"])
 

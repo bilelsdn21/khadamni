@@ -31,6 +31,8 @@ def _map_error(result: str):
 @router.get("/{request_id}")
 async def get_chat_room(request_id: str, current_user: dict = Depends(get_current_user)):
     """Get or create chat room for a request."""
+    if current_user.get("role") == "moderator":
+        raise HTTPException(status_code=403, detail="Moderators cannot access chat rooms")
     result = await get_or_create_chat_room(request_id, current_user["_id"])
     if isinstance(result, str):
         _map_error(result)

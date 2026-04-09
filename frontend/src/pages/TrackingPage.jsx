@@ -71,7 +71,16 @@ export default function TrackingPage() {
     ? 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png'
     : 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png';
 
-  const [providerPos, setProviderPos] = useState(null);
+  // Pre-seed provider position from their registered profile location so the
+  // map shows something useful immediately while GPS is acquiring (or if
+  // browser permission is denied).
+  const profileLat = user?.provider_profile?.latitude;
+  const profileLng = user?.provider_profile?.longitude;
+  const profilePos = isProvider && profileLat && profileLng
+    ? [profileLat, profileLng]
+    : null;
+
+  const [providerPos, setProviderPos] = useState(profilePos);
   const [clientPos, setClientPos]     = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [distance, setDistance]       = useState(null);
@@ -162,6 +171,7 @@ export default function TrackingPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
+
         myPosRef.current = { lat, lng };
 
         if (isProviderRef.current) setProviderPos([lat, lng]);
@@ -174,7 +184,7 @@ export default function TrackingPage() {
         _send(wsRef.current, lat, lng);
       },
       () => _applyFallback(),
-      { enableHighAccuracy: false, maximumAge: 5000, timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
 
     // Heartbeat: resend last known position every 4s so late-joining party always gets it.
@@ -223,8 +233,23 @@ export default function TrackingPage() {
           return;
         }
       } catch {}
+      setGpsError(true);
+      return;
     }
-    // Provider with no GPS, or client with no stored location
+
+    // Provider: fall back to their registered profile location so the map
+    // still shows something useful while GPS permission is being resolved.
+    const u = userRef.current;
+    const lat = u?.provider_profile?.latitude;
+    const lng = u?.provider_profile?.longitude;
+    if (lat && lng) {
+      myPosRef.current = { lat, lng };
+      setProviderPos([lat, lng]);
+      _send(wsRef.current, lat, lng);
+      // Don't setGpsError — the map works, we're just using a static pin.
+      return;
+    }
+
     setGpsError(true);
   }
 
@@ -320,13 +345,13 @@ export default function TrackingPage() {
         </div>
       )}
 
-      {/* ── Waiting for MY own GPS fix ── */}
+      {/* ── Waiting for MY own GPS fix (only shows when no profile fallback) ── */}
       {!gpsError && (isProvider ? !providerPos : !clientPos) && (
         <div className="absolute inset-0 z-[500] flex items-center justify-center pointer-events-none">
           <div className="bg-[#1E293B]/90 backdrop-blur-md border border-white/10 rounded-[20px] px-6 py-4 text-center shadow-xl">
             <div className="w-8 h-8 border-2 border-[#22C55E] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-white/80 text-sm font-medium">Acquiring your location...</p>
-            <p className="text-white/30 text-xs mt-2">Allow location access if prompted</p>
+            <p className="text-white/80 text-sm font-medium">Getting GPS signal...</p>
+            <p className="text-white/30 text-xs mt-2">Allow location access if prompted · may take a few seconds</p>
           </div>
         </div>
       )}

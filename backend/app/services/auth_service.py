@@ -47,6 +47,7 @@ async def register_user(user_data: dict):
             "full_name": f"{user_data['first_name']} {user_data['last_name']}",
             "bio": user_data.get("bio", "").strip(),
             "service_categories": clean_categories,
+            "custom_category": user_data.get("custom_category", "").strip() or None,
             "hourly_rate": user_data.get("hourly_rate"),
             "experience_years": user_data.get("experience_years"),
             "phone": user_data.get("phone"),
@@ -85,7 +86,24 @@ async def login_user(email: str, password: str, remember_me: bool = False, devic
     if not user:
         return "invalid_credentials"
 
-    # [SPECIAL CASE] Auto-login test accounts (Bypasses broken bcrypt engine and OTP)
+    # 2. Check if user is suspended — auto-lift expired suspensions, otherwise let them in
+    #    (frontend will show the suspension overlay when user.suspended is True)
+    if user.get("suspended"):
+        until = user.get("suspended_until")
+        if until is not None:
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) >= until:
+                # Suspension expired — auto-lift
+                await db.users.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"suspended": False, "suspended_until": None, "suspended_reason": None}}
+                )
+                user["suspended"] = False
+                user["suspended_until"] = None
+                user["suspended_reason"] = None
+
+    # [SPECIAL CASE] Auto-login test accounts (Bypasses bcrypt engine and OTP)
     if email.endswith("@test.com"):
         if user.get("role") == "provider":
             profile = await db.provider_profiles.find_one({"user_id": user["_id"]})
