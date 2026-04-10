@@ -28,8 +28,17 @@ function ShieldIcon() {
 function SearchIcon() {
   return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
 }
-function BackIcon() {
-  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>;
+function HomeIcon() {
+  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>;
+}
+function MapIcon() {
+  return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>;
+}
+function RefreshIcon() {
+  return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>;
+}
+function LogoutIcon() {
+  return <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,7 +118,7 @@ function CategoryBar({ label, count, max }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ModeratorDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   // Stats
   const [stats, setStats] = useState(null);
@@ -269,14 +278,18 @@ export default function ModeratorDashboard() {
     <div className="min-h-screen bg-[#0F172A] text-white">
       {/* ── Header ── */}
       <div className="sticky top-0 z-40 bg-[#0F172A]/90 backdrop-blur-md border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
+          {/* Home button */}
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/')}
+            title="Go to home page"
             className="w-9 h-9 rounded-[12px] bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition"
           >
-            <BackIcon />
+            <HomeIcon />
           </button>
-          <div className="flex items-center gap-2.5">
+
+          {/* Brand */}
+          <div className="flex items-center gap-2.5 flex-1">
             <div className="w-9 h-9 rounded-[12px] bg-[#22C55E]/10 border border-[#22C55E]/30 flex items-center justify-center text-[#4ADE80]">
               <ShieldIcon />
             </div>
@@ -284,6 +297,38 @@ export default function ModeratorDashboard() {
               <h1 className="text-lg font-bold tracking-wide">Moderator Panel</h1>
               <p className="text-white/40 text-xs">{user?.first_name} {user?.last_name}</p>
             </div>
+          </div>
+
+          {/* Quick actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/map')}
+              title="Inspect live map"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition text-xs font-medium"
+            >
+              <MapIcon />
+              <span className="hidden sm:inline">Live Map</span>
+            </button>
+            <button
+              onClick={() => {
+                setStatsLoading(true);
+                api.get('/moderator/stats').then(r => setStats(r.data)).catch(() => {}).finally(() => setStatsLoading(false));
+                if (activeSection === 'users') fetchUsers();
+                if (activeSection === 'reports') fetchReports();
+              }}
+              title="Refresh data"
+              className="w-8 h-8 rounded-[10px] bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition"
+            >
+              <RefreshIcon />
+            </button>
+            <button
+              onClick={() => { logout(); navigate('/login'); }}
+              title="Sign out"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition text-xs font-medium"
+            >
+              <LogoutIcon />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
         </div>
       </div>

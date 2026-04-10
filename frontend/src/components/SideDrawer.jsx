@@ -96,7 +96,7 @@ export default function SideDrawer({ open, onClose }) {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {MENU_ITEMS.filter(item => {
-            if (user?.role === 'moderator') return item.path === '/profile';
+            if (user?.role === 'moderator') return item.path === '/profile' || item.path === '/map';
             return true;
           }).map((item) => (
             <Link key={item.path} to={item.path} onClick={onClose}

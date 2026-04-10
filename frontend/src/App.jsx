@@ -126,9 +126,9 @@ function App() {
           {/* Home page */}
           <Route path="/" element={<Home />} />
           <Route path="/map" element={
-            <NonModeratorRoute>
+            <ProtectedRoute>
               <Map />
-            </NonModeratorRoute>
+            </ProtectedRoute>
           } />
 
           {/* Moderator can view their own profile or public provider profiles */}
