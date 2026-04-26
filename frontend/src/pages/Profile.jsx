@@ -6,7 +6,7 @@ import L from 'leaflet';
 import AuthContext from '../context/AuthContext';
 import api from '../api/axios';
 import { removeDevices } from '../api/auth';
-import { getProfile, updateProfile, getPublicProfileById, uploadAvatar, changePassword } from '../api/profile';
+import { getProfile, updateProfile, getPublicProfileById, getPublicUserById, uploadAvatar, changePassword } from '../api/profile';
 import { getPortfolio, addPortfolioItem, deletePortfolioItem } from '../api/portfolio';
 import { createRequest } from '../api/request';
 import { getUserRatings } from '../api/ratings';
@@ -47,6 +47,79 @@ function FlyToLocation({ position }) {
   return null;
 }
 
+function PortfolioCard({ images, description, isOwnProfile, onDelete }) {
+  const [idx, setIdx] = useState(0);
+  const total = images.length;
+  const prev = (e) => { e.stopPropagation(); setIdx(i => (i - 1 + total) % total); };
+  const next = (e) => { e.stopPropagation(); setIdx(i => (i + 1) % total); };
+
+  return (
+    <div className="group flex flex-col rounded-[16px] overflow-hidden bg-[#0F172A] border border-white/8">
+      {/* Image carousel */}
+      <div className="relative aspect-video overflow-hidden">
+        <img
+          src={`/uploads/${images[idx]}`}
+          alt={description}
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+        />
+
+        {/* Prev / Next — only when multiple images */}
+        {total > 1 && (
+          <>
+            <button onClick={prev}
+              className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 z-10"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={next}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 z-10"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            {/* Dot indicators */}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">
+              {images.map((_, i) => (
+                <button key={i} onClick={(e) => { e.stopPropagation(); setIdx(i); }}
+                  className={`rounded-full transition-all duration-200 ${i === idx ? 'w-4 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'}`}
+                />
+              ))}
+            </div>
+            {/* Counter pill */}
+            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-black/50 backdrop-blur-sm text-white text-[10px] font-semibold z-10">
+              {idx + 1}/{total}
+            </div>
+          </>
+        )}
+
+        {/* Delete overlay */}
+        {isOwnProfile && (
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-start justify-end p-2 z-20 pointer-events-none group-hover:pointer-events-auto">
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="w-7 h-7 rounded-full bg-red-500/90 flex items-center justify-center hover:bg-red-500 transition shadow-lg"
+            >
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Description — always visible below */}
+      {description && (
+        <div className="px-3 py-2.5">
+          <p className="text-white/60 text-xs leading-relaxed">{description}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Profile() {
   const { id } = useParams();
   const { user, login } = useContext(AuthContext);
@@ -70,7 +143,7 @@ export default function Profile() {
 
   // Portfolio upload
   const [uploadDesc, setUploadDesc] = useState('');
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]); // array of File objects
   const [uploading, setUploading] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
 
@@ -104,8 +177,14 @@ export default function Profile() {
         const res = await getProfile();
         data = res.data;
       } else {
-        const res = await getPublicProfileById(id);
-        data = res.data;
+        try {
+          const res = await getPublicProfileById(id);
+          data = res.data;
+        } catch {
+          // Not a provider profile ID — try plain user lookup (e.g. client viewed by provider)
+          const res = await getPublicUserById(id);
+          data = res.data;
+        }
       }
       setProfileData(data);
 
@@ -123,6 +202,7 @@ export default function Profile() {
       }
     } catch (err) {
       console.error('Error fetching profile data:', err);
+      setProfileData(null);
     } finally {
       setLoading(false);
     }
@@ -237,15 +317,15 @@ export default function Profile() {
 
   const handlePortfolioUpload = async (e) => {
     e.preventDefault();
-    if (!uploadFile || !uploadDesc.trim()) return;
+    if (!uploadFiles.length || !uploadDesc.trim()) return;
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('image', uploadFile);
+      uploadFiles.forEach(f => formData.append('images', f));
       formData.append('description', uploadDesc);
       await addPortfolioItem(formData);
       setUploadDesc('');
-      setUploadFile(null);
+      setUploadFiles([]);
       setShowUploadForm(false);
       const res = await getPortfolio(user._id);
       setPortfolio(res.data);
@@ -332,6 +412,19 @@ export default function Profile() {
           </div>
           <Skeleton className="h-64 w-full rounded-[20px]" />
         </div>
+      </div>
+    );
+  }
+
+  if (!loading && !profileData) {
+    return (
+      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center gap-4">
+        <p className="text-5xl">👤</p>
+        <p className="text-white font-semibold text-lg">User not found</p>
+        <p className="text-white/40 text-sm">This profile doesn't exist or was removed.</p>
+        <button onClick={() => window.history.back()} className="mt-2 px-5 py-2 rounded-[20px] bg-white/10 text-white/70 text-sm hover:bg-white/20 transition">
+          Go back
+        </button>
       </div>
     );
   }
@@ -439,7 +532,7 @@ export default function Profile() {
                     onChange={e => setEditForm({ ...editForm, experience_years: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-xs text-white/60 mb-1">Hourly Rate (DA)</label>
+                  <label className="block text-xs text-white/60 mb-1">Hourly Rate (DT)</label>
                   <input type="number" min="0" className={inputClass}
                     value={editForm.hourly_rate}
                     onChange={e => setEditForm({ ...editForm, hourly_rate: e.target.value })} />
@@ -628,17 +721,25 @@ export default function Profile() {
                       Edit Profile
                     </button>
                   )}
-                  {!isOwnProfile && isProvider && user?.role === 'client' && (
-                    <button
-                      onClick={() => setReqModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#4ADE80] text-xs font-semibold hover:bg-[#22C55E]/30 transition-all shadow-lg shadow-[#22C55E]/10"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Send Request
-                    </button>
-                  )}
+                  {!isOwnProfile && isProvider && user?.role === 'client' && (() => {
+                    const available = profileData?.provider_profile?.is_available ?? profileData?.is_available ?? true;
+                    return available ? (
+                      <button
+                        onClick={() => setReqModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#4ADE80] text-xs font-semibold hover:bg-[#22C55E]/30 transition-all shadow-lg shadow-[#22C55E]/10"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Send Request
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/30 text-xs font-semibold cursor-not-allowed select-none">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
+                        Not taking requests
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -715,7 +816,7 @@ export default function Profile() {
                   </div>
                   <div>
                     <p className="text-xs text-white/40 mb-1">Hourly Rate</p>
-                    <p className="text-lg font-bold text-emerald-400">{profileData?.provider_profile?.hourly_rate || profileData?.hourly_rate || 0} DA/hr</p>
+                    <p className="text-lg font-bold text-emerald-400">{profileData?.provider_profile?.hourly_rate || profileData?.hourly_rate || 0} DT/hr</p>
                   </div>
                 </>
               ) : (
@@ -811,40 +912,58 @@ export default function Profile() {
                   {/* Upload form */}
                   {showUploadForm && isOwnProfile && (
                     <form onSubmit={handlePortfolioUpload} className="mb-4 p-4 rounded-[15px] bg-[#0F172A] border border-white/5 space-y-3">
-                      <input type="file" accept="image/jpeg,image/png,image/webp"
-                        onChange={e => setUploadFile(e.target.files[0])}
-                        className="w-full text-sm text-white/60 file:mr-3 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:bg-[#22C55E]/20 file:text-[#4ADE80] hover:file:bg-[#22C55E]/30 cursor-pointer" />
-                      <input type="text" placeholder="Description..."
+                      {/* File picker */}
+                      <label className="flex flex-col items-center justify-center gap-2 w-full h-24 rounded-[12px] border-2 border-dashed border-white/10 hover:border-[#22C55E]/40 cursor-pointer transition-colors">
+                        <svg className="w-6 h-6 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-white/40 text-xs">{uploadFiles.length ? `${uploadFiles.length} photo${uploadFiles.length > 1 ? 's' : ''} selected` : 'Click to select photos (up to 8)'}</span>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden"
+                          onChange={e => setUploadFiles(Array.from(e.target.files).slice(0, 8))} />
+                      </label>
+                      {/* Previews */}
+                      {uploadFiles.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {uploadFiles.map((f, i) => (
+                            <div key={i} className="relative w-16 h-16 rounded-[10px] overflow-hidden border border-white/10 group/thumb">
+                              <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                              <button type="button"
+                                onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
+                                className="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity"
+                              >
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <input type="text" placeholder="Description for this post..."
                         value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
                         className="w-full px-3 py-2 rounded-[12px] bg-[#1E293B] border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#22C55E]" />
-                      <button type="submit" disabled={uploading || !uploadFile || !uploadDesc.trim()}
+                      <button type="submit" disabled={uploading || !uploadFiles.length || !uploadDesc.trim()}
                         className="w-full py-2 rounded-[12px] bg-[#22C55E] text-white text-sm font-semibold disabled:opacity-50 hover:bg-[#16A34A] transition"
                       >
-                        {uploading ? 'Uploading...' : 'Upload'}
+                        {uploading ? 'Uploading...' : `Upload ${uploadFiles.length > 1 ? `${uploadFiles.length} photos` : 'photo'}`}
                       </button>
                     </form>
                   )}
 
                   {portfolio.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4">
-                      {portfolio.map(item => (
-                        <div key={item._id} className="group relative aspect-video rounded-xl overflow-hidden bg-white/5">
-                          <img src={`/uploads/${item.image_path}`} alt={item.description}
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex items-end justify-between">
-                            <p className="text-xs text-white truncate">{item.description}</p>
-                            {isOwnProfile && (
-                              <button onClick={() => handleDeletePortfolio(item._id)}
-                                className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center shrink-0 ml-2 hover:bg-red-500 transition"
-                              >
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                      {portfolio.map(item => {
+                        const images = item.image_paths?.length ? item.image_paths : (item.image_path ? [item.image_path] : []);
+                        return (
+                          <PortfolioCard
+                            key={item._id}
+                            images={images}
+                            description={item.description}
+                            isOwnProfile={isOwnProfile}
+                            onDelete={() => handleDeletePortfolio(item._id)}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="h-32 flex items-center justify-center border-2 border-dashed border-white/5 rounded-xl">

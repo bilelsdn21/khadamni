@@ -25,6 +25,7 @@ async def create_request(client_id: str, provider_profile_id: str, description: 
         "description": description,
         "status": "pending",
         "job_type": provider.get("job_type", "in_place"),
+        "service_category": (provider.get("service_categories") or ["Unknown"])[0],
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -52,6 +53,14 @@ async def get_my_requests(user_id: str, role: str, status: str = None):
         r["provider_id"] = str(r["provider_id"])
         if r.get("provider_profile_id"):
             r["provider_profile_id"] = str(r["provider_profile_id"])
+        # Attach other party avatar
+        try:
+            other_id = r["client_id"] if role == "provider" else r["provider_id"]
+            other_doc = await db.users.find_one({"_id": ObjectId(other_id)}, {"avatar": 1})
+            r["other_party_avatar"] = other_doc.get("avatar") if other_doc else None
+        except Exception:
+            r["other_party_avatar"] = None
+
         # Attach unread message count for this request's chat room
         try:
             room = await db.chat_rooms.find_one({"request_id": ObjectId(r["_id"])})

@@ -44,9 +44,19 @@ async def get_all_providers(category: str = None, search: str = None, only_avail
     total = await db.provider_profiles.count_documents(query)
     skip = (page - 1) * per_page
     providers = await db.provider_profiles.find(query).skip(skip).limit(per_page).to_list(length=per_page)
+
+    # Batch-fetch avatars from users collection
+    user_ids = [p["user_id"] for p in providers if p.get("user_id")]
+    if user_ids:
+        users = await db.users.find({"_id": {"$in": user_ids}}, {"_id": 1, "avatar": 1}).to_list(len(user_ids))
+        avatar_map = {str(u["_id"]): u.get("avatar") for u in users}
+    else:
+        avatar_map = {}
+
     for p in providers:
         p["_id"] = str(p["_id"])
         p["user_id"] = str(p["user_id"])
+        p["avatar"] = avatar_map.get(p["user_id"])
     return {"providers": providers, "total": total, "page": page, "per_page": per_page, "total_pages": max(1, -(-total // per_page))}
 
 
@@ -68,9 +78,21 @@ async def get_remote_providers(category: str = None, search: str = None):
         query = {"$and": [query, search_filter]}
 
     providers = await db.provider_profiles.find(query).to_list(length=100)
+
+    # Batch-fetch avatars from users collection
+    user_ids = [p["user_id"] for p in providers if p.get("user_id")]
+    if user_ids:
+        users = await db.users.find(
+            {"_id": {"$in": user_ids}}, {"_id": 1, "avatar": 1}
+        ).to_list(length=len(user_ids))
+        avatar_map = {str(u["_id"]): u.get("avatar") for u in users}
+    else:
+        avatar_map = {}
+
     for p in providers:
         p["_id"] = str(p["_id"])
         p["user_id"] = str(p["user_id"])
+        p["avatar"] = avatar_map.get(p["user_id"])
     return providers
 async def toggle_availability(user_id: str):
     db = get_db()

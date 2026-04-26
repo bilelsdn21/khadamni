@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { registerUser } from '../api/auth';
 import useAuth from '../hooks/useAuth';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
@@ -50,6 +50,7 @@ function FlyToLocation({ position }) {
 export default function Register() {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -58,7 +59,7 @@ export default function Register() {
     phone: '',
     password: '',
     confirm_password: '',
-    role: 'client',
+    role: searchParams.get('role') === 'provider' ? 'provider' : 'client',
     // Provider-specific
     bio: '',
     service_categories: [],
@@ -359,38 +360,79 @@ export default function Register() {
 
               {/* Expanded map */}
               {mapOpen && (
-                <div className="rounded-[20px] overflow-hidden border border-white/10" style={{ position: 'relative' }}>
-                  {/* Search bar */}
-                  <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, width: '80%' }}>
-                    <input
-                      type="text"
-                      placeholder="Search location..."
-                      value={searchQuery}
-                      onChange={(e) => handleLocationSearch(e.target.value)}
-                      className="w-full px-4 py-2 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] shadow-lg"
-                      style={{ fontSize: '13px' }}
-                    />
-                    {searchResults.length > 0 && (
-                      <div style={{ backgroundColor: '#1E293B', borderRadius: '12px', marginTop: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        {searchResults.map((result) => (
-                          <div
-                            key={result.place_id}
-                            onClick={() => {
-                              const loc = [parseFloat(result.lat), parseFloat(result.lon)];
-                              setFlyTarget(loc);
-                              setForm({ ...form, latitude: loc[0], longitude: loc[1] });
-                              setSearchQuery(result.display_name.split(',').slice(0, 2).join(','));
-                              setSearchResults([]);
-                            }}
-                            style={{ padding: '8px 14px', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-                          >
-                            {result.display_name.split(',').slice(0, 2).join(',')}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                <div>
+                  {/* Controls above the map — normal flow, no overflow clipping */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+
+                    {/* Use current location button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!navigator.geolocation) return;
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            const loc = [pos.coords.latitude, pos.coords.longitude];
+                            setFlyTarget(loc);
+                            setForm((prev) => ({ ...prev, latitude: loc[0], longitude: loc[1] }));
+                          },
+                          () => alert('Could not get your location. Please allow location access.')
+                        );
+                      }}
+                      style={{
+                        width: '100%', padding: '9px',
+                        background: 'rgba(59,130,246,0.12)',
+                        color: '#60A5FA',
+                        border: '1px solid rgba(59,130,246,0.25)', borderRadius: '16px',
+                        fontWeight: '600', fontSize: '13px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      }}
+                    >
+                      <svg style={{ width: '15px', height: '15px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v4m0 12v4M2 12h4m12 0h4" />
+                      </svg>
+                      Use my current location
+                    </button>
+
+                    {/* Search bar */}
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        placeholder="Search location..."
+                        value={searchQuery}
+                        onChange={(e) => handleLocationSearch(e.target.value)}
+                        className="w-full px-4 py-2 rounded-[20px] bg-[#1E293B] border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#22C55E] shadow-lg"
+                        style={{ fontSize: '13px' }}
+                      />
+                      {searchResults.length > 0 && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+                          backgroundColor: '#1E293B', borderRadius: '12px',
+                          marginTop: '4px', border: '1px solid rgba(255,255,255,0.1)',
+                          maxHeight: '160px', overflowY: 'auto',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                        }}>
+                          {searchResults.map((result) => (
+                            <div
+                              key={result.place_id}
+                              onClick={() => {
+                                const loc = [parseFloat(result.lat), parseFloat(result.lon)];
+                                setFlyTarget(loc);
+                                setForm({ ...form, latitude: loc[0], longitude: loc[1] });
+                                setSearchQuery(result.display_name.split(',').slice(0, 2).join(','));
+                                setSearchResults([]);
+                              }}
+                              style={{ padding: '8px 14px', color: 'rgba(255,255,255,0.85)', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                            >
+                              {result.display_name.split(',').slice(0, 2).join(',')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Map */}
+                  <div className="rounded-[20px] overflow-hidden border border-white/10">
                   <MapContainer center={flyTarget} zoom={6} style={{ height: '280px', width: '100%' }} zoomControl={false}>
                     <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" />
                     <FlyToLocation position={flyTarget} />
@@ -414,6 +456,7 @@ export default function Register() {
                         Confirm
                       </button>
                     )}
+                  </div>
                   </div>
                 </div>
               )}
@@ -474,7 +517,7 @@ export default function Register() {
               </div>
               <div>
                 <label htmlFor="hourly_rate" className="block text-sm font-medium text-white/80 mb-1">
-                  Hourly rate (DA) <span className="text-gray-400">(opt.)</span>
+                  Hourly rate (DT) <span className="text-gray-400">(opt.)</span>
                 </label>
                 <input
                   id="hourly_rate" name="hourly_rate" type="number" min="0"

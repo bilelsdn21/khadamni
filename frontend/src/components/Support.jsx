@@ -23,7 +23,7 @@ export default function Support() {
         </div>
         <div className="mt-16 text-center">
           <p className="text-white/80 mb-6">Still need help? Contact our support team</p>
-          <a href="mailto:support@khadamni.com" className="inline-block px-8 py-4 rounded-[20px] bg-gradient-to-br from-[#22C55E] to-[#16A34A] text-white font-semibold shadow-lg shadow-[#22C55E]/40 hover:shadow-[#22C55E]/60 hover:-translate-y-0.5 transition-all duration-200 ring-1 ring-[#4ADE80]/30">
+          <a href="mailto:khadamni303@gmail.com" className="inline-block px-8 py-4 rounded-[20px] bg-gradient-to-br from-[#22C55E] to-[#16A34A] text-white font-semibold shadow-lg shadow-[#22C55E]/40 hover:shadow-[#22C55E]/60 hover:-translate-y-0.5 transition-all duration-200 ring-1 ring-[#4ADE80]/30">
             Contact Support
           </a>
         </div>

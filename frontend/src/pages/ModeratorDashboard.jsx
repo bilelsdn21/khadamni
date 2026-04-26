@@ -97,19 +97,43 @@ function StatCard({ icon, label, value, color = 'green', sub }) {
   );
 }
 
-function CategoryBar({ label, count, max }) {
-  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
+function CategoryBar({ label, count, total, max, rank, color = 'green' }) {
+  const pct       = max > 0 ? Math.round((count / max) * 100) : 0;
+  const sharePct  = total > 0 ? Math.round((count / total) * 100) : 0;
+  const medal     = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
+  const barColor  = color === 'purple'
+    ? 'from-purple-500 to-purple-400'
+    : 'from-[#22C55E] to-[#4ADE80]';
+  const countColor = color === 'purple' ? 'text-purple-400' : 'text-[#4ADE80]';
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-white/80 font-medium">{label}</span>
-        <span className="text-[#4ADE80] font-bold">{count}</span>
+    <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: '10px', alignItems: 'center' }}>
+      {/* Rank */}
+      <div style={{ textAlign: 'center' }}>
+        {medal
+          ? <span style={{ fontSize: '16px' }}>{medal}</span>
+          : <span style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.2)' }}>#{rank}</span>
+        }
       </div>
-      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-gradient-to-r from-[#22C55E] to-[#4ADE80] rounded-full transition-all duration-700"
-          style={{ width: `${pct}%` }}
-        />
+
+      {/* Content */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{label}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' }}>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>{sharePct}%</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: color === 'purple' ? '#c084fc' : '#4ADE80', minWidth: '24px', textAlign: 'right' }}>{count}</span>
+          </div>
+        </div>
+        <div style={{ height: '5px', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            width: `${pct}%`,
+            background: color === 'purple' ? 'linear-gradient(to right, #a855f7, #c084fc)' : 'linear-gradient(to right, #22C55E, #4ADE80)',
+            borderRadius: '99px',
+            transition: 'width 0.7s ease',
+          }} />
+        </div>
       </div>
     </div>
   );
@@ -271,8 +295,10 @@ export default function ModeratorDashboard() {
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
-  const maxInplace = stats?.top_inplace?.[0]?.count || 1;
-  const maxRemote = stats?.top_remote?.[0]?.count || 1;
+  const maxInplace   = stats?.top_inplace?.[0]?.count || 1;
+  const maxRemote    = stats?.top_remote?.[0]?.count || 1;
+  const totalInplace = stats?.top_inplace?.reduce((s, i) => s + i.count, 0) || 1;
+  const totalRemote  = stats?.top_remote?.reduce((s, i) => s + i.count, 0) || 1;
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-white">
@@ -356,32 +382,56 @@ export default function ModeratorDashboard() {
         {/* ── Top Categories ── */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#1E293B] rounded-[20px] border border-white/10 p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-[#22C55E]" />
-                <h3 className="text-sm font-semibold text-white/80">Top In-Place Jobs</h3>
-              </div>
-              {stats.top_inplace.length > 0 ? stats.top_inplace.map(item => (
-                <CategoryBar key={item.category} label={item.category} count={item.count} max={maxInplace} />
-              )) : <p className="text-white/30 text-sm">No completed in-place jobs yet.</p>}
-            </div>
-            <div className="bg-[#1E293B] rounded-[20px] border border-white/10 p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-purple-400" />
-                <h3 className="text-sm font-semibold text-white/80">Top Remote Jobs</h3>
-              </div>
-              {stats.top_remote.length > 0 ? stats.top_remote.map(item => (
-                <div key={item.category} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/80 font-medium">{item.category}</span>
-                    <span className="text-purple-400 font-bold">{item.count}</span>
-                  </div>
-                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-700"
-                      style={{ width: `${Math.round((item.count / maxRemote) * 100)}%` }} />
-                  </div>
+            {/* In-Place */}
+            <div className="bg-[#1E293B] rounded-[20px] border border-white/10 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-[#22C55E]" />
+                  <h3 className="text-sm font-semibold text-white/80">Top In-Place Jobs</h3>
                 </div>
-              )) : <p className="text-white/30 text-sm">No completed remote jobs yet.</p>}
+                <span className="text-xs text-white/30 tabular-nums">{totalInplace} total</span>
+              </div>
+              {stats.top_inplace.length > 0 ? (
+                <div className="space-y-3">
+                  {stats.top_inplace.map((item, i) => (
+                    <CategoryBar
+                      key={item.category}
+                      label={item.category}
+                      count={item.count}
+                      total={totalInplace}
+                      max={maxInplace}
+                      rank={i + 1}
+                      color="green"
+                    />
+                  ))}
+                </div>
+              ) : <p className="text-white/30 text-sm">No completed in-place jobs yet.</p>}
+            </div>
+
+            {/* Remote */}
+            <div className="bg-[#1E293B] rounded-[20px] border border-white/10 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-purple-400" />
+                  <h3 className="text-sm font-semibold text-white/80">Top Remote Jobs</h3>
+                </div>
+                <span className="text-xs text-white/30 tabular-nums">{totalRemote} total</span>
+              </div>
+              {stats.top_remote.length > 0 ? (
+                <div className="space-y-3">
+                  {stats.top_remote.map((item, i) => (
+                    <CategoryBar
+                      key={item.category}
+                      label={item.category}
+                      count={item.count}
+                      total={totalRemote}
+                      max={maxRemote}
+                      rank={i + 1}
+                      color="purple"
+                    />
+                  ))}
+                </div>
+              ) : <p className="text-white/30 text-sm">No completed remote jobs yet.</p>}
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@ from bson import ObjectId
 from datetime import datetime, timezone
 
 
-async def add_portfolio_item(provider_user_id: str, image_path: str, description: str):
+async def add_portfolio_item(provider_user_id: str, image_paths: list, description: str):
     db = get_db()
 
     profile = await db.provider_profiles.find_one({"user_id": ObjectId(provider_user_id)})
@@ -13,7 +13,7 @@ async def add_portfolio_item(provider_user_id: str, image_path: str, description
     result = await db.portfolio_items.insert_one({
         "provider_id": ObjectId(provider_user_id),
         "provider_profile_id": profile["_id"],
-        "image_path": image_path,
+        "image_paths": image_paths,
         "description": description,
         "created_at": datetime.now(timezone.utc),
     })
@@ -31,6 +31,9 @@ async def get_portfolio(provider_user_id: str):
         item["_id"] = str(item["_id"])
         item["provider_id"] = str(item["provider_id"])
         item["provider_profile_id"] = str(item["provider_profile_id"])
+        # Normalize: old items have image_path (str), new items have image_paths (list)
+        if "image_paths" not in item:
+            item["image_paths"] = [item["image_path"]] if item.get("image_path") else []
 
     return items
 

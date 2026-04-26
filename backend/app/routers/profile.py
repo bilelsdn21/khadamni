@@ -16,6 +16,21 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
 
+@router.get("/user/{user_id}/public")
+async def get_public_user(user_id: str):
+    """Return basic public info for any user (used by providers viewing client profiles)."""
+    db = get_db()
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user["_id"] = str(user["_id"])
+    user.pop("password", None)
+    return user
+
+
 @router.get("/me")
 async def get_profile(current_user: dict = Depends(get_current_user)):
     result = await get_my_profile(current_user["_id"])

@@ -37,7 +37,7 @@ async def register_user(user_data: dict):
     if user_data["role"] == "provider":
         # Clean categories (strip whitespace/newlines)
         raw_categories = user_data.get("service_categories", [])
-        clean_categories = [c.strip() for c in raw_categories if c.strip()]
+        clean_categories = [c.strip() for c in raw_categories if c and c.strip()]
 
         lat = user_data.get("latitude")
         lng = user_data.get("longitude")
@@ -45,9 +45,9 @@ async def register_user(user_data: dict):
         provider_profile = {
             "user_id": result.inserted_id,
             "full_name": f"{user_data['first_name']} {user_data['last_name']}",
-            "bio": user_data.get("bio", "").strip(),
+            "bio": (user_data.get("bio") or "").strip(),
             "service_categories": clean_categories,
-            "custom_category": user_data.get("custom_category", "").strip() or None,
+            "custom_category": (user_data.get("custom_category") or "").strip() or None,
             "hourly_rate": user_data.get("hourly_rate"),
             "experience_years": user_data.get("experience_years"),
             "phone": user_data.get("phone"),

@@ -11,7 +11,9 @@ export default function FloatingChat() {
   const [chats, setChats] = useState([]);
   const panelRef = useRef(null);
 
-  const hidden = location.pathname.startsWith('/chat/') || location.pathname.startsWith('/tracking/');
+  const hidden = location.pathname.startsWith('/chat/')
+    || location.pathname.startsWith('/tracking/')
+    || location.pathname === '/requests';
 
   const fetchChats = async () => {
     if (!localStorage.getItem('access_token')) return;

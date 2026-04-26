@@ -66,6 +66,7 @@ async def create_offer(
     result = await send_offer(request_id, current_user["_id"], data.amount, data.note)
     if isinstance(result, str):
         _map_error(result)
+    await manager.broadcast(request_id, {"type": "offer", "message": result})
     return result
 
 
@@ -86,6 +87,7 @@ async def update_offer(
     result = await update_offer_status(request_id, message_id, current_user["_id"], data.status)
     if isinstance(result, str):
         _map_error(result)
+    await manager.broadcast(request_id, {"type": "offer_update", "message": result})
     return result
 
 
@@ -95,6 +97,8 @@ async def confirm(request_id: str, current_user: dict = Depends(get_current_user
     result = await confirm_agreement(request_id, current_user["_id"])
     if isinstance(result, str):
         _map_error(result)
+    if result.get("status") == "both_confirmed":
+        await manager.broadcast(request_id, {"type": "confirmed"})
     return result
 
 
@@ -104,6 +108,11 @@ async def cancel(request_id: str, current_user: dict = Depends(get_current_user)
     result = await cancel_request(request_id, current_user["_id"])
     if isinstance(result, str):
         _map_error(result)
+    cancelled_by = result.get("cancelled_by", "User")
+    await manager.broadcast(request_id, {
+        "type": "cancelled",
+        "message": f"Request was cancelled by {cancelled_by}"
+    })
     return result
 
 
@@ -155,9 +164,9 @@ async def websocket_endpoint(websocket: WebSocket, request_id: str, token: str =
     room_id = str(room["_id"])
     user_role = "Client" if str(request["client_id"]) == user["_id"] else "Provider"
 
-    await manager.connect(request_id, websocket)
+    await manager.connect(request_id, websocket, user["_id"])
 
-    # Send message history
+    # Send message history to the connecting user
     messages = await db.chat_messages.find(
         {"room_id": room["_id"]}
     ).sort("timestamp", -1).limit(50).to_list(length=50)
@@ -167,10 +176,19 @@ async def websocket_endpoint(websocket: WebSocket, request_id: str, token: str =
 
     await websocket.send_json({"type": "history", "messages": messages})
     await mark_messages_as_read(room_id, user["_id"])
-    await manager.broadcast(request_id, {
-        "type": "system",
-        "message": f"{user_role} has joined the chat"
+
+    # Tell connecting user who is already online in this room
+    await manager.send_to(websocket, {
+        "type": "presence_init",
+        "online_users": manager.get_online_users(request_id)
     })
+
+    # Tell everyone else this user just came online
+    await manager.broadcast_except(request_id, {
+        "type": "presence",
+        "user_id": user["_id"],
+        "status": "online"
+    }, exclude_ws=websocket)
 
     try:
         while True:
@@ -222,13 +240,19 @@ async def websocket_endpoint(websocket: WebSocket, request_id: str, token: str =
                 await manager.broadcast(request_id, data)
 
     except WebSocketDisconnect:
-        manager.disconnect(request_id, websocket)
+        manager.disconnect(request_id, websocket, user["_id"])
         await manager.broadcast(request_id, {
-            "type": "system",
-            "message": f"{user_role} has left the chat"
+            "type": "presence",
+            "user_id": user["_id"],
+            "status": "offline"
         })
     except Exception:
-        manager.disconnect(request_id, websocket)
+        manager.disconnect(request_id, websocket, user["_id"])
+        await manager.broadcast(request_id, {
+            "type": "presence",
+            "user_id": user["_id"],
+            "status": "offline"
+        })
         try:
             await websocket.close(code=4001, reason="Error occurred")
         except:

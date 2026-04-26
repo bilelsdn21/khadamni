@@ -102,7 +102,7 @@ export default function Providers() {
               </li>
             </ul>
             <div className="mt-10">
-              <Link to="/register" className="inline-block border border-white/20 text-white hover:bg-white/10 px-8 py-3 rounded-full font-medium transition-colors">
+              <Link to="/register?role=provider" className="inline-block border border-white/20 text-white hover:bg-white/10 px-8 py-3 rounded-full font-medium transition-colors">
                 Apply as a Provider
               </Link>
             </div>

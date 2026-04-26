@@ -10,7 +10,10 @@
       "Bash(python -m uvicorn app.main:app --reload)",
       "Bash(python -c ':*)",
       "Bash(pip install:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Read(//c/Users/user/Desktop/**)",
+      "Read(//c/Users/user/.claude/projects/c--Users-user-Desktop-khd//**)",
+      "Read(//c/Users/user/.claude/projects//**)"
     ]
   }
 }

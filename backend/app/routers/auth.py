@@ -55,7 +55,12 @@ async def register(user: UserCreate):
 
 @router.post("/login")
 async def login(user: UserLogin):
-    result = await login_user(user.email, user.password, user.remember_me, user.device_token)
+    try:
+        result = await login_user(user.email, user.password, user.remember_me, user.device_token)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
     if result == "invalid_credentials":
         raise HTTPException(status_code=401, detail="Invalid email or password")

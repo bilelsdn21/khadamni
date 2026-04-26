@@ -64,23 +64,33 @@ async def get_stats(_: dict = Depends(require_moderator)):
     reports_pending = await db.reports.count_documents({"status": "pending"})
     reports_reviewed = await db.reports.count_documents({"status": "reviewed"})
 
-    pipeline_inplace = [
-        {"$match": {"status": "completed", "job_type": "in_place"}},
-        {"$group": {"_id": "$service_category", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 3},
-        {"$project": {"category": "$_id", "count": 1, "_id": 0}},
-    ]
-    top_inplace = await db.service_requests.aggregate(pipeline_inplace).to_list(3)
+    def top_jobs_pipeline(job_type: str):
+        return [
+            {"$match": {"status": "completed", "job_type": job_type}},
+            {"$lookup": {
+                "from": "provider_profiles",
+                "localField": "provider_profile_id",
+                "foreignField": "_id",
+                "as": "profile",
+            }},
+            {"$unwind": {"path": "$profile", "preserveNullAndEmptyArrays": True}},
+            {"$addFields": {
+                "category": {
+                    "$ifNull": [
+                        "$service_category",
+                        {"$arrayElemAt": ["$profile.service_categories", 0]}
+                    ]
+                }
+            }},
+            {"$match": {"category": {"$ne": None}}},
+            {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5},
+            {"$project": {"category": "$_id", "count": 1, "_id": 0}},
+        ]
 
-    pipeline_remote = [
-        {"$match": {"status": "completed", "job_type": "remote"}},
-        {"$group": {"_id": "$service_category", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 3},
-        {"$project": {"category": "$_id", "count": 1, "_id": 0}},
-    ]
-    top_remote = await db.service_requests.aggregate(pipeline_remote).to_list(3)
+    top_inplace = await db.service_requests.aggregate(top_jobs_pipeline("in_place")).to_list(5)
+    top_remote  = await db.service_requests.aggregate(top_jobs_pipeline("remote")).to_list(5)
 
     return {
         "users": {"total": total_users, "clients": clients, "providers": providers, "suspended": suspended},

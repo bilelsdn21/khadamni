@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './components/Toast';
 import AuthLayout from './layouts/AuthLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -14,6 +15,8 @@ import Requests from './pages/Requests';
 import ProtectedRoute from './components/ProtectedRoute';
 import FloatingChat from './components/FloatingChat';
 import ModeratorDashboard from './pages/ModeratorDashboard';
+import NotificationsPage from './pages/NotificationsPage';
+import SupportPage from './pages/SupportPage';
 import useAuth from './hooks/useAuth';
 
 function ModeratorRoute({ children }) {
@@ -120,6 +123,7 @@ function App() {
   return (
     <ThemeProvider>
     <AuthProvider>
+    <ToastProvider>
       <BrowserRouter>
         <SuspensionGuard />
         <Routes>
@@ -174,6 +178,18 @@ function App() {
             </ModeratorRoute>
           } />
 
+          <Route path="/notifications" element={
+            <ProtectedRoute>
+              <NotificationsPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/support" element={
+            <ProtectedRoute>
+              <SupportPage />
+            </ProtectedRoute>
+          } />
+
           {/* Auth pages */}
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
@@ -186,6 +202,7 @@ function App() {
         </Routes>
         <FloatingChat />
       </BrowserRouter>
+    </ToastProvider>
     </AuthProvider>
     </ThemeProvider>
   );

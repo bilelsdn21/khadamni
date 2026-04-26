@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <!-- Main background gradient — warm green, top-left to bottom-right -->
+    <linearGradient id="bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#34D464"/>
+      <stop offset="50%"  stop-color="#20B958"/>
+      <stop offset="100%" stop-color="#0F7A35"/>
+    </linearGradient>
+
+    <!-- Frosted inner-shadow to add depth (darkens edges/bottom) -->
+    <radialGradient id="inner-shadow" cx="30%" cy="20%" r="80%" gradientUnits="objectBoundingBox">
+      <stop offset="0%"   stop-color="white"   stop-opacity="0.12"/>
+      <stop offset="60%"  stop-color="white"   stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.25"/>
+    </radialGradient>
+
+    <!-- Subtle dot-ping glow at junction -->
+    <radialGradient id="ping" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="white" stop-opacity="0.9"/>
+      <stop offset="55%"  stop-color="#4ADE80" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#22C55E" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Gradient for K strokes — bright top, slightly dimmer bottom -->
+    <linearGradient id="k-stroke" x1="12" y1="9" x2="36" y2="39" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="white" stop-opacity="1"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0.82"/>
+    </linearGradient>
+
+    <!-- Outer glow on the dot (soft bloom) -->
+    <filter id="bloom" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Very subtle outer glow on whole icon (for use in Navbar img) -->
+    <filter id="icon-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#22C55E" flood-opacity="0.5"/>
+    </filter>
+
+    <!-- Clip to rounded square -->
+    <clipPath id="clip">
+      <rect width="48" height="48" rx="11"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#icon-shadow)">
+    <!-- Base gradient background -->
+    <rect width="48" height="48" rx="11" fill="url(#bg)"/>
+
+    <!-- Depth overlay (inner shadow illusion) -->
+    <rect width="48" height="48" rx="11" fill="url(#inner-shadow)"/>
+
+    <!-- Subtle grid lines in top-right quadrant — adds texture, not noise -->
+    <g clip-path="url(#clip)" stroke="white" stroke-opacity="0.06" stroke-width="0.7">
+      <!-- Horizontal lines (top-right area only) -->
+      <line x1="26" y1="0"  x2="48" y2="0"/>
+      <line x1="26" y1="6"  x2="48" y2="6"/>
+      <line x1="26" y1="12" x2="48" y2="12"/>
+      <line x1="26" y1="18" x2="48" y2="18"/>
+      <line x1="26" y1="24" x2="48" y2="24"/>
+      <!-- Vertical lines (top-right area only) -->
+      <line x1="28" y1="0" x2="28" y2="24"/>
+      <line x1="34" y1="0" x2="34" y2="24"/>
+      <line x1="40" y1="0" x2="40" y2="24"/>
+      <line x1="46" y1="0" x2="46" y2="24"/>
+    </g>
+
+    <!-- ═══ K LETTERFORM ═══ -->
+    <!-- Vertical stem -->
+    <line x1="13" y1="9.5" x2="13" y2="38.5"
+          stroke="url(#k-stroke)" stroke-width="5.5" stroke-linecap="round"/>
+
+    <!-- Upper arm — starts from junction, goes to top-right -->
+    <line x1="15.5" y1="22.5" x2="36" y2="9.5"
+          stroke="url(#k-stroke)" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Lower arm — starts from junction, goes to bottom-right -->
+    <line x1="15.5" y1="25.5" x2="36" y2="38.5"
+          stroke="url(#k-stroke)" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- ═══ JUNCTION PING DOT ═══ -->
+    <!-- The meeting point of the K = where client meets provider = map pin idea -->
+    <!-- Outer aura ring -->
+    <circle cx="13.2" cy="24" r="8" fill="url(#ping)" filter="url(#bloom)"/>
+    <!-- Dark ring frame -->
+    <circle cx="13.2" cy="24" r="4.2" fill="#0D6E30"/>
+    <!-- Green fill -->
+    <circle cx="13.2" cy="24" r="3.4" fill="#22C55E"/>
+    <!-- Bright white core -->
+    <circle cx="13.2" cy="24" r="1.9" fill="white"/>
+    <!-- Specular microshine -->
+    <circle cx="12.3" cy="23.1" r="0.65" fill="white" fill-opacity="0.55"/>
+  </g>
+</svg>

@@ -4,7 +4,7 @@ import useNotifications from '../hooks/useNotifications';
 
 export default function NotificationBell({ className = '' }) {
   const navigate = useNavigate();
-  const { notifications, unseenCount, markAllSeen } = useNotifications();
+  const { notifications, unseenCount, markAllSeen, dismissNotification, dismissAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
 
@@ -58,14 +58,14 @@ export default function NotificationBell({ className = '' }) {
           {/* Header */}
           <div className="px-4 py-3 border-b border-white/8 flex items-center justify-between">
             <span className="text-white font-semibold text-sm">Notifications</span>
-            {notifications.length > 0 && (
+            {notifications.length > 0 ? (
               <button
-                onClick={() => { navigate('/requests'); setOpen(false); }}
-                className="text-[#4ADE80] text-xs hover:underline"
+                onClick={dismissAll}
+                className="text-white/40 text-xs hover:text-red-400 transition"
               >
-                View all
+                Clear all
               </button>
-            )}
+            ) : null}
           </div>
 
           {/* Items */}
@@ -77,10 +77,9 @@ export default function NotificationBell({ className = '' }) {
               </div>
             ) : (
               notifications.map(n => (
-                <button
+                <div
                   key={n.id}
-                  onClick={() => handleClick(n.link)}
-                  className="w-full px-4 py-3 flex items-start gap-3 hover:bg-white/[0.04] transition-all duration-150 text-left border-b border-white/5 last:border-0"
+                  className="w-full px-4 py-3 flex items-start gap-3 hover:bg-white/[0.04] transition-all duration-150 border-b border-white/5 last:border-0 group"
                 >
                   {/* Icon circle */}
                   <div
@@ -89,18 +88,35 @@ export default function NotificationBell({ className = '' }) {
                   >
                     {n.icon}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <button className="flex-1 min-w-0 text-left" onClick={() => { dismissNotification(n.id); handleClick(n.link); }}>
                     <p className="text-white text-xs font-semibold truncate">{n.title}</p>
                     <p className="text-white/50 text-[11px] leading-relaxed mt-0.5 line-clamp-2">{n.body}</p>
-                  </div>
-                  {/* Arrow */}
-                  <svg className="w-3.5 h-3.5 text-white/20 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
+                  </button>
+                  {/* Delete */}
+                  <button
+                    onClick={() => dismissNotification(n.id)}
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/10 transition shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               ))
             )}
           </div>
+
+          {/* Footer — link to full page */}
+          {notifications.length > 0 && (
+            <div className="px-4 py-2.5 border-t border-white/8">
+              <button
+                onClick={() => { setOpen(false); navigate('/notifications'); }}
+                className="w-full text-center text-[#4ADE80] text-xs hover:underline"
+              >
+                View all notifications
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -220,8 +220,19 @@ export default function Map() {
   const [aiResult, setAiResult] = useState(null);
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [aiRemoteSuggestions, setAiRemoteSuggestions] = useState([]);
+  const [aiStep, setAiStep] = useState(null); // null | 'analyzing' | 'finding' | 'done'
+  const [aiPlatformPrices, setAiPlatformPrices] = useState(null); // { min, max, avg }
+  const [recentAiSearches, setRecentAiSearches] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('recent_ai_searches') || '[]'); } catch { return []; }
+  });
 
   const REMOTE_CATEGORIES = new Set(['IT Support', 'Tutoring', 'Cooking', 'Delivery', 'Graphic Design', 'Translation', 'Web Development', 'Video Editing', 'Data Entry', 'Other']);
+  const AI_EXAMPLE_QUERIES = [
+    { emoji: '🚿', text: 'My shower is leaking and needs fixing' },
+    { emoji: '💡', text: 'Need an electrician for wiring installation' },
+    { emoji: '🖥️', text: 'Laptop not turning on, need IT help' },
+    { emoji: '🏠', text: 'Deep cleaning for a 3-room apartment' },
+  ];
   const [overlayQuery, setOverlayQuery] = useState('');
   const [overlayResults, setOverlayResults] = useState([]);
   const [overlayPicked, setOverlayPicked] = useState(null);
@@ -246,19 +257,26 @@ export default function Map() {
     }, 400);
   };
 
+  // Persist recent AI searches to localStorage
+  useEffect(() => {
+    localStorage.setItem('recent_ai_searches', JSON.stringify(recentAiSearches.slice(0, 5)));
+  }, [recentAiSearches]);
+
   // Restore AI panel state when returning from a provider profile page
   useEffect(() => {
     if (!isClient) return;
     try {
       const saved = sessionStorage.getItem('ai_panel_state');
       if (!saved) return;
-      const { query, result, suggestions, remoteSuggestions } = JSON.parse(saved);
+      const { query, result, suggestions, remoteSuggestions, platformPrices } = JSON.parse(saved);
       sessionStorage.removeItem('ai_panel_state');
       setAiOpen(true);
       setAiQuery(query || '');
       setAiResult(result || null);
       setAiSuggestions(suggestions || []);
       setAiRemoteSuggestions(remoteSuggestions || []);
+      setAiPlatformPrices(platformPrices || null);
+      if (result) setAiStep('done');
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -394,35 +412,56 @@ export default function Map() {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
-  const handleAiSearch = async () => {
-    if (!aiQuery.trim()) return;
+  const _nameGrad = (name) => {
+    const colors = ['#22C55E,#16A34A','#3B82F6,#1D4ED8','#F59E0B,#D97706','#EC4899,#BE185D','#8B5CF6,#6D28D9','#EF4444,#B91C1C','#06B6D4,#0E7490'];
+    let h = 0; for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+    return `linear-gradient(135deg,${colors[h % colors.length]})`;
+  };
+
+  const handleAiSearch = async (queryOverride) => {
+    const q = (queryOverride ?? aiQuery).trim();
+    if (!q) return;
+    if (queryOverride) setAiQuery(queryOverride);
     setAiLoading(true);
+    setAiStep('analyzing');
     setAiSuggestions([]);
     setAiRemoteSuggestions([]);
+    setAiPlatformPrices(null);
     try {
-      const res = await api.post('/ai/analyze-request', { description: aiQuery });
+      const res = await api.post('/ai/analyze-request', { description: q });
       setAiResult(res.data);
+      setAiStep('finding');
       const category = res.data.category;
-      if (res.data.category) setCategoryFilter(res.data.category);
+      if (category) setCategoryFilter(category);
       if (res.data.structured_description) setRequestDescription(res.data.structured_description);
 
-      if (!category) return;
+      if (!category) { setAiStep('done'); return; }
 
-      // Get client location once
+      // Save to recent searches
+      setRecentAiSearches(prev => {
+        const filtered = prev.filter(s => s.query !== q);
+        return [{ query: q, category }, ...filtered].slice(0, 5);
+      });
+
+      // Get client location
       let clientLat = null, clientLng = null;
       try {
         const stored = localStorage.getItem('client_location');
         if (stored) { const [la, ln] = JSON.parse(stored); clientLat = la; clientLng = ln; }
       } catch {}
 
-      // ── In-place providers — ranked by distance (60%) + quality (40%) ──
-      const [provRes, remoteRes] = await Promise.all([
+      // ── Parallel: providers + real platform prices ──
+      const [provRes, remoteRes, priceRes] = await Promise.all([
         api.get(`/providers/all_providers?category=${encodeURIComponent(category)}&per_page=50`).catch(() => ({ data: [] })),
         REMOTE_CATEGORIES.has(category)
           ? api.get(`/providers/remote?category=${encodeURIComponent(category)}`).catch(() => ({ data: [] }))
           : Promise.resolve({ data: [] }),
+        api.get(`/ai/price-stats/${encodeURIComponent(category)}`).catch(() => null),
       ]);
 
+      if (priceRes?.data?.available && priceRes.data.min != null) setAiPlatformPrices(priceRes.data);
+
+      // ── In-place providers — top 5 by distance (60%) + quality (40%) ──
       const inPlaceList = provRes.data?.providers || provRes.data || [];
       const scored = inPlaceList
         .filter(p => p.is_available !== false && p.latitude && p.longitude)
@@ -433,11 +472,10 @@ export default function Map() {
           return { ...p, _dist: dist, _score: distScore * 0.6 + qualityScore * 0.4, _remote: false };
         })
         .sort((a, b) => b._score - a._score)
-        .slice(0, 3);
-
+        .slice(0, 5);
       setAiSuggestions(scored);
 
-      // ── Remote providers — ranked purely by quality (rating + jobs) ──
+      // ── Remote providers — top 5 by quality ──
       const remoteList = Array.isArray(remoteRes.data) ? remoteRes.data : [];
       const scoredRemote = remoteList
         .filter(p => p.is_available !== false)
@@ -446,12 +484,13 @@ export default function Map() {
           return { ...p, _dist: null, _score: qualityScore, _remote: true };
         })
         .sort((a, b) => b._score - a._score)
-        .slice(0, 3);
-
+        .slice(0, 5);
       setAiRemoteSuggestions(scoredRemote);
 
+      setAiStep('done');
     } catch (err) {
       console.error('AI search failed:', err);
+      setAiStep(null);
     } finally {
       setAiLoading(false);
     }
@@ -647,6 +686,38 @@ export default function Map() {
               </div>
             </div>
 
+            {/* Use current location button */}
+            <button
+              onClick={() => {
+                if (!navigator.geolocation) return;
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    const loc = [pos.coords.latitude, pos.coords.longitude];
+                    setOverlayPicked(loc);
+                    setOverlayMapTarget(loc);
+                    setOverlayQuery('');
+                  },
+                  () => alert('Could not get your location. Please allow location access.')
+                );
+              }}
+              style={{
+                width: '100%', padding: '10px', marginBottom: '12px',
+                background: 'rgba(59,130,246,0.15)',
+                color: '#60A5FA',
+                border: '1px solid rgba(59,130,246,0.3)', borderRadius: '20px',
+                fontWeight: '600', fontSize: '13px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.25)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.15)'}
+            >
+              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v4m0 12v4M2 12h4m12 0h4" />
+              </svg>
+              Use my current location
+            </button>
+
             {/* Search input */}
             <div style={{ position: 'relative', marginBottom: '8px' }}>
               <input
@@ -762,6 +833,8 @@ export default function Map() {
                       setAiQuery('');
                       setAiSuggestions([]);
                       setAiRemoteSuggestions([]);
+                      setAiStep(null);
+                      setAiPlatformPrices(null);
                       sessionStorage.removeItem('ai_panel_state');
                     } else {
                       setAiOpen(true);
@@ -961,10 +1034,13 @@ export default function Map() {
                   className="flex-1 bg-transparent text-white placeholder-white/40 text-sm outline-none"
                   autoFocus
                 />
+                {aiQuery && (
+                  <button onClick={() => setAiQuery('')} className="text-white/30 hover:text-white/60 text-lg leading-none">×</button>
+                )}
                 <button
-                  onClick={handleAiSearch}
+                  onClick={() => handleAiSearch()}
                   disabled={aiLoading || !aiQuery.trim()}
-                  className="w-8 h-8 rounded-full bg-[#22C55E] flex items-center justify-center text-white disabled:opacity-40 transition-opacity"
+                  className="w-8 h-8 rounded-full bg-[#22C55E] flex items-center justify-center text-white disabled:opacity-40 transition-opacity flex-shrink-0"
                 >
                   {aiLoading ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -975,14 +1051,84 @@ export default function Map() {
                   )}
                 </button>
               </div>
+
+              {/* Example queries — shown when no result yet */}
+              {!aiResult && !aiLoading && (
+                <div className="px-4 pb-3 space-y-2">
+                  <p className="text-white/30 text-[10px] uppercase tracking-wider font-semibold">Try asking</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {AI_EXAMPLE_QUERIES.map((ex, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleAiSearch(ex.text)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/60 text-[11px] hover:bg-white/10 hover:text-white/80 transition-all"
+                      >
+                        <span>{ex.emoji}</span>
+                        <span className="truncate max-w-[160px]">{ex.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {/* Recent searches */}
+                  {recentAiSearches.length > 0 && (
+                    <div className="pt-1">
+                      <p className="text-white/30 text-[10px] uppercase tracking-wider font-semibold mb-1.5">Recent</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {recentAiSearches.map((s, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleAiSearch(s.query)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20 text-[#4ADE80] text-[11px] hover:bg-[#22C55E]/20 transition-all"
+                          >
+                            <span className="text-[10px]">🕐</span>
+                            <span className="truncate max-w-[160px]">{s.query}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Multi-step loading display */}
+              {aiLoading && (
+                <div className="border-t border-white/5 px-4 py-4 space-y-2">
+                  {[
+                    { key: 'analyzing', label: 'Analyzing your request with AI...', done: aiStep === 'finding' || aiStep === 'done' },
+                    { key: 'finding',   label: 'Finding best providers near you...', done: aiStep === 'done' },
+                  ].map((step, i) => {
+                    const active = aiStep === step.key;
+                    const pending = !active && !step.done;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        {step.done ? (
+                          <div className="w-4 h-4 rounded-full bg-[#22C55E] flex items-center justify-center flex-shrink-0">
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        ) : active ? (
+                          <div className="w-4 h-4 border-2 border-[#22C55E] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <div className="w-4 h-4 rounded-full border border-white/20 flex-shrink-0" />
+                        )}
+                        <span className={`text-xs ${step.done ? 'text-[#4ADE80]' : active ? 'text-white' : 'text-white/30'}`}>{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Result card */}
-              {aiResult && (
+              {aiResult && !aiLoading && (
                 <div className="border-t border-[#22C55E]/20 px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[#4ADE80] text-xs font-semibold">✓ AI understood your request</span>
-                    <button onClick={() => setAiResult(null)} className="text-white/30 hover:text-white/60 text-lg leading-none">×</button>
+                    <button
+                      onClick={() => { setAiResult(null); setAiSuggestions([]); setAiRemoteSuggestions([]); setAiPlatformPrices(null); setAiStep(null); }}
+                      className="text-white/30 hover:text-white/60 text-lg leading-none"
+                    >×</button>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
+                  <div className="flex items-center gap-2 text-sm flex-wrap">
                     <span className="text-white/50">Category:</span>
                     <span className="text-white font-semibold">{aiResult.category}</span>
                     <span className="text-white/20">·</span>
@@ -990,12 +1136,25 @@ export default function Map() {
                       {aiResult.urgency} urgency
                     </span>
                   </div>
-                  {aiResult.price_min && aiResult.price_max && (
-                    <div className="text-sm">
-                      <span className="text-white/50">Est. price: </span>
-                      <span className="text-white font-semibold">{aiResult.price_min} – {aiResult.price_max} DT</span>
+
+                  {/* Price box: AI estimate + real platform prices */}
+                  {(aiResult.price_min && aiResult.price_max) || aiPlatformPrices ? (
+                    <div className="flex gap-2">
+                      {aiResult.price_min && aiResult.price_max && (
+                        <div className="flex-1 rounded-[10px] bg-white/5 border border-white/10 px-3 py-2">
+                          <p className="text-white/40 text-[9px] uppercase tracking-wider font-semibold mb-0.5">AI Estimate</p>
+                          <p className="text-white text-xs font-bold">{aiResult.price_min}–{aiResult.price_max} DT</p>
+                        </div>
+                      )}
+                      {aiPlatformPrices && (
+                        <div className="flex-1 rounded-[10px] bg-[#22C55E]/8 border border-[#22C55E]/20 px-3 py-2">
+                          <p className="text-[#4ADE80]/70 text-[9px] uppercase tracking-wider font-semibold mb-0.5">Platform Avg</p>
+                          <p className="text-[#4ADE80] text-xs font-bold">{aiPlatformPrices.min}–{aiPlatformPrices.max} DT</p>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
+
                   {aiResult.key_points?.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {aiResult.key_points.map((kp, i) => (
@@ -1006,23 +1165,38 @@ export default function Map() {
                   <p className="text-white/30 text-[11px]">Description pre-filled for your request ✓</p>
 
                   {/* In-place provider suggestions */}
-                  {aiSuggestions.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
+                  {aiStep === 'done' && (
+                    <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5">
                       <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">📍 Best matches near you</p>
-                      {aiSuggestions.map(p => (
+                      {aiSuggestions.length === 0 ? (
+                        <div className="py-3 text-center">
+                          <p className="text-white/30 text-xs">No available providers found nearby</p>
+                          <p className="text-white/20 text-[11px] mt-0.5">Try a different category or check back later</p>
+                        </div>
+                      ) : aiSuggestions.map((p, idx) => (
                         <div
                           key={p._id}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-white/5 border border-transparent"
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-[12px] border ${idx === 0 ? 'bg-[#22C55E]/5 border-[#22C55E]/20' : 'bg-white/5 border-transparent'}`}
                         >
-                          <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
-                          </div>
+                          {/* Avatar */}
+                          {p.avatar ? (
+                            <img src={`/uploads/${p.avatar}`} alt={p.full_name}
+                              className="w-9 h-9 rounded-full object-cover border border-white/10 flex-shrink-0" />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                              style={{ background: _nameGrad(p.full_name) }}>
+                              {p.full_name?.charAt(0) || '?'}
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-white text-xs font-semibold truncate">{p.full_name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-1.5">
+                              {idx === 0 && <span className="text-[10px]">🏆</span>}
+                              <p className="text-white text-xs font-semibold truncate">{p.full_name}</p>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               {p.avg_rating > 0 && <span className="text-yellow-400 text-[10px]">★ {p.avg_rating.toFixed(1)}</span>}
                               {p._dist != null && (
-                                <span className="text-white/40 text-[10px]">
+                                <span className="px-1.5 py-0.5 rounded-full bg-[#22C55E]/15 text-[#4ADE80] text-[9px] font-semibold">
                                   {p._dist < 1000 ? `${Math.round(p._dist)}m` : `${(p._dist/1000).toFixed(1)}km`}
                                 </span>
                               )}
@@ -1036,6 +1210,7 @@ export default function Map() {
                                 sessionStorage.setItem('ai_panel_state', JSON.stringify({
                                   query: aiQuery, result: aiResult,
                                   suggestions: aiSuggestions, remoteSuggestions: aiRemoteSuggestions,
+                                  platformPrices: aiPlatformPrices,
                                 }));
                               }}
                               className="px-2 py-1 rounded-[8px] bg-white/10 border border-white/15 text-white/60 text-[10px] font-semibold hover:bg-white/20 transition-all"
@@ -1055,17 +1230,24 @@ export default function Map() {
                   )}
 
                   {/* Remote provider suggestions */}
-                  {aiRemoteSuggestions.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
+                  {aiStep === 'done' && aiRemoteSuggestions.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5">
                       <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">🌐 Available remotely</p>
-                      {aiRemoteSuggestions.map(p => (
+                      {aiRemoteSuggestions.map((p, idx) => (
                         <div
                           key={p._id}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-[12px] bg-[#6366F1]/5 border border-transparent"
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-[12px] border ${idx === 0 ? 'bg-[#6366F1]/8 border-[#6366F1]/25' : 'bg-[#6366F1]/5 border-transparent'}`}
                         >
-                          <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-[#6366F1]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            <img src={getServiceIconUrl(p.service_categories?.[0] || '')} alt="" className="w-5 h-5 object-contain" />
-                          </div>
+                          {/* Avatar */}
+                          {p.avatar ? (
+                            <img src={`/uploads/${p.avatar}`} alt={p.full_name}
+                              className="w-9 h-9 rounded-full object-cover border border-white/10 flex-shrink-0" />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                              style={{ background: _nameGrad(p.full_name) }}>
+                              {p.full_name?.charAt(0) || '?'}
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <p className="text-white text-xs font-semibold truncate">{p.full_name}</p>
@@ -1074,7 +1256,6 @@ export default function Map() {
                             <div className="flex items-center gap-2 mt-0.5">
                               {p.avg_rating > 0 && <span className="text-yellow-400 text-[10px]">★ {p.avg_rating.toFixed(1)}</span>}
                               {p.total_jobs > 0 && <span className="text-white/30 text-[10px]">{p.total_jobs} jobs</span>}
-                              <span className="text-[#818CF8] text-[10px]">Works from anywhere</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1084,6 +1265,7 @@ export default function Map() {
                                 sessionStorage.setItem('ai_panel_state', JSON.stringify({
                                   query: aiQuery, result: aiResult,
                                   suggestions: aiSuggestions, remoteSuggestions: aiRemoteSuggestions,
+                                  platformPrices: aiPlatformPrices,
                                 }));
                               }}
                               className="px-2 py-1 rounded-[8px] bg-white/10 border border-white/15 text-white/60 text-[10px] font-semibold hover:bg-white/20 transition-all"
@@ -1263,9 +1445,14 @@ export default function Map() {
               <Popup>
                 <div className="p-4 w-60">
                   <div className="flex items-center gap-3 mb-3 border-b border-white/10 pb-3">
-                    <div className="w-10 h-10 rounded-full bg-white/5 border border-[#22C55E]/30 flex items-center justify-center font-bold text-white/50 text-sm uppercase shrink-0">
-                      {provider.full_name ? provider.full_name.charAt(0) : '?'}
-                    </div>
+                    {provider.avatar ? (
+                      <img src={`/uploads/${provider.avatar}`} alt={provider.full_name}
+                        className="w-10 h-10 rounded-full object-cover border border-[#22C55E]/30 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-white/5 border border-[#22C55E]/30 flex items-center justify-center font-bold text-white/50 text-sm uppercase shrink-0">
+                        {provider.full_name ? provider.full_name.charAt(0) : '?'}
+                      </div>
+                    )}
                     <div>
                       <h3 className="font-bold text-white/90 text-sm leading-tight">
                         {provider.full_name || 'Provider'}
@@ -1393,10 +1580,18 @@ export default function Map() {
                   >
                     {/* Header */}
                     <div className="flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-bold shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
-                        {provider.full_name?.charAt(0) || '?'}
-                      </div>
+                      {provider.avatar ? (
+                        <img
+                          src={`/uploads/${provider.avatar}`}
+                          alt={provider.full_name}
+                          className="w-12 h-12 rounded-full object-cover shrink-0 border border-white/10"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-bold shrink-0"
+                          style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
+                          {provider.full_name?.charAt(0) || '?'}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-white font-semibold text-sm truncate">{provider.full_name}</p>
@@ -1512,19 +1707,50 @@ export default function Map() {
                   Waiting for {selectedProvider.full_name} to respond
                 </div>
               </div>
+            ) : selectedProvider.is_available === false ? (
+              /* Safety: provider became unavailable after being cached */
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚫</div>
+                <div style={{ color: 'white', fontWeight: '600', fontSize: '15px' }}>{selectedProvider.full_name}</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '6px' }}>
+                  Not taking requests right now
+                </div>
+                <button
+                  onClick={() => { setSelectedProvider(null); setRequestDescription(''); }}
+                  style={{
+                    marginTop: '20px', padding: '10px 24px',
+                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '20px', cursor: 'pointer', fontSize: '14px'
+                  }}
+                >
+                  Go Back
+                </button>
+              </div>
             ) : (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
-                   <div style={{
-                    width: '44px', height: '44px', borderRadius: '50%',
-                    background: 'linear-gradient(135deg,#22C55E,#4ADE80)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '15px', fontWeight: '700', color: 'white', flexShrink: 0
-                  }}>
-                    {selectedProvider.full_name ? selectedProvider.full_name.charAt(0) : '?'}
-                  </div>
+                  {selectedProvider.avatar ? (
+                    <img
+                      src={`/uploads/${selectedProvider.avatar}`}
+                      alt={selectedProvider.full_name}
+                      style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.1)', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '50%',
+                      background: _nameGrad(selectedProvider.full_name),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '15px', fontWeight: '700', color: 'white', flexShrink: 0
+                    }}>
+                      {selectedProvider.full_name ? selectedProvider.full_name.charAt(0) : '?'}
+                    </div>
+                  )}
                   <div>
-                    <div style={{ color: 'white', fontWeight: '600', fontSize: '15px' }}>{selectedProvider.full_name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ color: 'white', fontWeight: '600', fontSize: '15px' }}>{selectedProvider.full_name}</div>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 6px rgba(34,197,94,0.8)', flexShrink: 0 }} />
+                    </div>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
                       {selectedProvider.service_categories?.map(c => c === 'Other' && selectedProvider.custom_category ? selectedProvider.custom_category : c).join(' · ')}
                     </div>

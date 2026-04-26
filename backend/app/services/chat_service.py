@@ -70,6 +70,9 @@ async def get_or_create_chat_room(request_id: str, user_id: str):
     # Get request info for service category
     provider_profile = await db.provider_profiles.find_one({"user_id": ObjectId(room["provider_id"])})
     service_category = provider_profile.get("category", "Service") if provider_profile else "Service"
+    provider_profile_id = str(provider_profile["_id"]) if provider_profile else None
+    other_party_avatar = other_user.get("avatar") if other_user else None
+    other_party_role = other_user.get("role") if other_user else None
 
     unread_count = await db.chat_messages.count_documents({
         "room_id": ObjectId(room["_id"]),
@@ -82,7 +85,10 @@ async def get_or_create_chat_room(request_id: str, user_id: str):
         "messages": messages,
         "other_party_name": other_party_name,
         "other_party_id": other_party_id,
+        "other_party_role": other_party_role,
+        "other_party_avatar": other_party_avatar,
         "service_category": service_category,
+        "provider_profile_id": provider_profile_id,
         "request_status": request["status"],
         "unread_count": unread_count,
     }

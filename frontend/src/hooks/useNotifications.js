@@ -7,6 +7,7 @@ export default function useNotifications() {
   const [notifications, setNotifications] = useState([]);
   const intervalRef = useRef(null);
   const seenRef = useRef(new Set(JSON.parse(localStorage.getItem('seen_notif_ids') || '[]')));
+  const dismissedRef = useRef(new Set(JSON.parse(localStorage.getItem('dismissed_notif_ids') || '[]')));
 
   const buildNotifications = (requests, role) => {
     const items = [];
@@ -80,7 +81,10 @@ export default function useNotifications() {
       });
     }
 
-    return items.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 10);
+    return items
+      .filter(n => !dismissedRef.current.has(n.id))
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 10);
   };
 
   const fetchNotifications = async () => {
@@ -108,7 +112,19 @@ export default function useNotifications() {
     setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
   };
 
+  const dismissNotification = (id) => {
+    dismissedRef.current.add(id);
+    localStorage.setItem('dismissed_notif_ids', JSON.stringify([...dismissedRef.current]));
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const dismissAll = () => {
+    notifications.forEach(n => dismissedRef.current.add(n.id));
+    localStorage.setItem('dismissed_notif_ids', JSON.stringify([...dismissedRef.current]));
+    setNotifications([]);
+  };
+
   const unseenCount = notifications.filter(n => !n.seen && !seenRef.current.has(n.id)).length;
 
-  return { notifications, unseenCount, markAllSeen };
+  return { notifications, unseenCount, markAllSeen, dismissNotification, dismissAll };
 }

@@ -6,6 +6,7 @@ from app.services.request_service import (
     accept_request, reject_request, complete_request, cancel_request
 )
 from app.dependencies import get_current_user
+from app.websockets.manager import manager
 
 router = APIRouter(prefix="/api/requests", tags=["Requests"])
 
@@ -59,6 +60,9 @@ async def accept(request_id: str, current_user: dict = Depends(get_current_user)
     result = await accept_request(request_id, current_user["_id"])
     if result != "ok":
         _map_error(result)
+
+    # Notify anyone connected to this chat room in real-time
+    await manager.broadcast(request_id, {"type": "request_accepted"})
     return {"message": "Request accepted"}
 
 
@@ -81,6 +85,7 @@ async def complete(request_id: str, current_user: dict = Depends(get_current_use
     result = await complete_request(request_id, current_user["_id"])
     if result != "ok":
         _map_error(result)
+    await manager.broadcast(request_id, {"type": "job_completed"})
     return {"message": "Request completed"}
 
 
