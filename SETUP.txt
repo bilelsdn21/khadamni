@@ -113,16 +113,23 @@ You need TWO terminals open simultaneously:
 CREATING A MODERATOR ACCOUNT
 =============================
 
-1. Register a normal account at /register (any role)
-2. Open MongoDB Compass → connect to mongodb://localhost:27017
-3. Open the khadamni database → users collection
-4. Find the account you just created
-5. Edit the document: set  role: "moderator"
-6. Log in — you will be redirected to the Moderator Dashboard
+OPTION A — Use the seed script (easiest):
+  cd backend
+  venv\Scripts\activate
+  python seed.py
 
-  OR use a test account (bypasses OTP):
-  Register with an email ending in @test.com
-  Then update the role in MongoDB Compass as above.
+  This creates a ready-to-use moderator account:
+    Email:    mod@test.com
+    Password: test123  (any password works for @test.com accounts)
+
+  It also seeds 3 clients, 12 providers, completed requests, and ratings.
+
+OPTION B — Manual setup:
+  1. Register a normal account at /register
+  2. Open MongoDB Compass → connect to mongodb://localhost:27017
+  3. Open the khadamni database → users collection
+  4. Find your account and set:  role: "moderator"
+  5. Log in — you will be redirected to the Moderator Dashboard
 
 
 PROJECT STRUCTURE
@@ -147,8 +154,9 @@ khadamni/
 
   frontend/
     src/
-      pages/           Login, Register, Map, Profile, Requests,
-                       ChatPage, TrackingPage, ModeratorDashboard
+      pages/           Home, Login, Register, Map, Profile, Requests,
+                       ChatPage, TrackingPage, ModeratorDashboard,
+                       NotificationsPage, SupportPage
       components/      SideDrawer, FloatingChat, ProtectedRoute,
                        NotificationBell, PortfolioGrid, etc.
       context/         AuthContext, ThemeContext
