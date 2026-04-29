@@ -45,16 +45,21 @@ STEP 3 — CREATE .env FILE
 
 Inside the backend/ folder, create a file named exactly: .env
 
-  MONGODB_URL=mongodb://localhost:27017
-  DATABASE_NAME=khadamni
-  SECRET_KEY=replace_with_any_long_random_string
-  ALGORITHM=HS256
-  ACCESS_TOKEN_EXPIRE_MINUTES=30
-  MAIL_USERNAME=your_gmail@gmail.com
-  MAIL_PASSWORD=your_gmail_app_password_16_chars
-  MAIL_FROM=your_gmail@gmail.com
-  MAIL_SERVER=smtp.gmail.com
-  MAIL_PORT=587
+  # MongoDB
+MONGODB_URL=mongodb://localhost:27017
+DATABASE_NAME=khadamni
+
+# JWT
+SECRET_KEY=iwishfor_site_to_actually_work_lol
+#jwt token :D 
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+MAIL_USERNAME=khadamni303@gmail.com
+MAIL_PASSWORD=gonxfxfiymwvaykf
+MAIL_FROM=khadamni303@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
   GROQ_API_KEY=your_groq_api_key
 
 HOW TO GET A GMAIL APP PASSWORD:
