@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Khadamni — Use Case Diagram</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #d0d0d0; padding: 30px; font-family: Arial, sans-serif; }
+  svg  { display: block; margin: 0 auto; background: white;
+         box-shadow: 0 4px 24px rgba(0,0,0,0.22); }
+</style>
+</head>
+<body>
+<svg id="ucd" width="1420" height="1120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+      <path d="M0,0.5 L0,5.5 L7,3 z" fill="#333"/>
+    </marker>
+  </defs>
+</svg>
+
+<script>
+// ─── LAYOUT ──────────────────────────────────────────────────────────────────
+const SYS_X=200, SYS_Y=50, SYS_W=1175, SYS_H=1015;
+const OV_CX=460, OV_RX=118, OV_RY=22;
+const OV_LEFT = OV_CX - OV_RX;   // left edge of all ovals = 342
+const NOTE_X=728, NOTE_W=355;
+const ACT_CX=72;
+const START_Y=100;
+const ITEM_GAP=55, GROUP_GAP=24, LBL_H=30;
+
+// Curve control points x (between actor and oval)
+const CP1X = 172;   // first control point x  (close to actor side)
+const CP2X = 275;   // second control point x (close to oval side)
+
+// ─── ACTOR STYLES ─────────────────────────────────────────────────────────────
+const ACTOR_STYLE = {
+  Client:   { stroke:"#222", fill:"white", marker:"url(#arr)" },
+  Provider: { stroke:"#222", fill:"white", marker:"url(#arr)" },
+  Moderator:{ stroke:"#222", fill:"white", marker:"url(#arr)" },
+};
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+const GROUPS = [
+  { label:"User Access and Profile", items:[
+    { id:"UC1",  title:"Account Management",
+      notes:["Register / Login with OTP verification",
+             "Trusted device management (skip OTP)",
+             "Edit profile, avatar and location"] },
+    { id:"UC2",  title:"Availability Management",
+      notes:["Set availability status (on / off)",
+             "Define job type: in_place or remote",
+             "Update service categories and hourly rate"] },
+  ]},
+  { label:"Service Discovery and Request", items:[
+    { id:"UC3",  title:"Service Discovery",
+      notes:["Search providers on interactive map",
+             "Browse remote providers by category",
+             "View provider profile and portfolio"] },
+    { id:"UC4",  title:"Service Request Management",
+      notes:["Submit request with free-text description",
+             "AI auto-analysis: category + price estimate",
+             "Accept, reject or cancel a request"] },
+  ]},
+  { label:"Service Interaction", items:[
+    { id:"UC5",  title:"Communication & Negotiation",
+      notes:["Real-time chat between client and provider",
+             "Send and respond to price offers",
+             "Accept or decline negotiated price"] },
+    { id:"UC6",  title:"Service Tracking",
+      notes:["Live GPS tracking of provider on map",
+             "Real-time route display via OSRM",
+             "WebSocket position broadcast"] },
+    { id:"UC7",  title:"Job Execution Management",
+      notes:["Provider marks job as started / complete",
+             "Client confirms job completion",
+             "Agreed price recorded on close"] },
+  ]},
+  { label:"Trust and Quality", items:[
+    { id:"UC8",  title:"Rating and Feedback",
+      notes:["Client rates provider after job (1–5)",
+             "Provider rates client after job (1–5)",
+             "Rating updates provider average score"] },
+    { id:"UC9",  title:"Dispute Reporting",
+      notes:["Submit dispute report on a completed job",
+             "AI (Groq) analyses full chat transcript",
+             "Structured report forwarded to moderator"] },
+  ]},
+  { label:"Platform Administration", items:[
+    { id:"UC10", title:"Platform Supervision",
+      notes:["View real-time platform statistics",
+             "Monitor users, requests and reports",
+             "Top service categories analytics"] },
+    { id:"UC11", title:"User Management",
+      notes:["Search and filter users by role",
+             "Suspend user (timed or permanent)",
+             "Edit or delete user account"] },
+    { id:"UC12", title:"Dispute Review",
+      notes:["Consult pending dispute reports",
+             "Read AI recommendation and summary",
+             "Mark report as reviewed with a note"] },
+  ]},
+];
+
+// cy = body center of stick figure — spaced so figures don't overlap
+const ACTORS = [
+  { name:"Client",   cy:345, connects:["UC1","UC3","UC4","UC5","UC6","UC8","UC9"] },
+  { name:"Provider", cy:530, connects:["UC1","UC2","UC4","UC5","UC6","UC7","UC8","UC9"] },
+  { name:"Moderator",cy:946, connects:["UC10","UC11","UC12"] },
+];
+
+// ─── COMPUTE OVAL Y POSITIONS ─────────────────────────────────────────────────
+const ucY = {};
+let y = SYS_Y + START_Y;
+GROUPS.forEach(g => {
+  y += LBL_H;
+  g.items.forEach(item => { ucY[item.id]=y; y+=ITEM_GAP; });
+  y += GROUP_GAP;
+});
+
+// ─── SVG HELPERS ──────────────────────────────────────────────────────────────
+const NS  = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("ucd");
+
+function mk(tag,attrs){ const e=document.createElementNS(NS,tag); for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v); return e; }
+function add(e){ svg.appendChild(e); return e; }
+function line(x1,y1,x2,y2,a={}){ return add(mk("line",{x1,y1,x2,y2,stroke:"#444","stroke-width":"1",...a})); }
+function text(x,y,s,a={}){ const e=mk("text",{x,y,"text-anchor":"middle","dominant-baseline":"middle",...a}); e.textContent=s; return add(e); }
+
+// ─── SYSTEM BOX ───────────────────────────────────────────────────────────────
+add(mk("rect",{x:SYS_X,y:SYS_Y,width:SYS_W,height:SYS_H,
+               fill:"white",stroke:"#111","stroke-width":"2",rx:"3"}));
+text(SYS_X+SYS_W/2, SYS_Y+22,"Khadamni Platform",
+     {"font-size":"15","font-weight":"bold",fill:"#111"});
+
+// ─── OVALS + NOTES ────────────────────────────────────────────────────────────
+let gy = SYS_Y + START_Y;
+GROUPS.forEach(group => {
+  const gl=mk("text",{x:OV_CX,y:gy+LBL_H/2,"text-anchor":"middle",
+    "dominant-baseline":"middle","font-size":"10","font-style":"italic",fill:"#999"});
+  gl.textContent=`— ${group.label} —`; add(gl);
+  gy += LBL_H;
+
+  group.items.forEach(item => {
+    const cy=gy;
+
+    // oval
+    add(mk("ellipse",{cx:OV_CX,cy,rx:OV_RX,ry:OV_RY,
+                      fill:"#FFFEF6",stroke:"#555","stroke-width":"1.2"}));
+    text(OV_CX,cy,item.title,{"font-size":"11",fill:"#111"});
+
+    // note box
+    const NH=14+item.notes.length*15;
+    const nx=NOTE_X,ny=cy-NH/2,nw=NOTE_W,fold=11;
+    add(mk("polygon",{
+      points:`${nx},${ny} ${nx+nw-fold},${ny} ${nx+nw},${ny+fold} ${nx+nw},${ny+NH} ${nx},${ny+NH}`,
+      fill:"#FFFFF0",stroke:"#BBBBAA","stroke-width":"1"}));
+    add(mk("polygon",{
+      points:`${nx+nw-fold},${ny} ${nx+nw-fold},${ny+fold} ${nx+nw},${ny+fold}`,
+      fill:"#DDDD88",stroke:"#BBBBAA","stroke-width":"1"}));
+    item.notes.forEach((note,ni)=>{
+      const nt=mk("text",{x:nx+9,y:ny+9+ni*15,"dominant-baseline":"hanging","font-size":"9.5",fill:"#333"});
+      nt.textContent=`- ${note}`; add(nt);
+    });
+    line(OV_CX+OV_RX,cy,NOTE_X,cy,{stroke:"#BBBBAA","stroke-width":"1","stroke-dasharray":"5,3"});
+
+    gy += ITEM_GAP;
+  });
+  gy += GROUP_GAP;
+});
+
+// ─── CONNECTIONS (smooth bezier, color per actor) ─────────────────────────────
+// Each path: M actor_exit C CP1x,actor_cy  CP2x,uc_y  OV_LEFT,uc_y
+ACTORS.forEach(actor => {
+  const st = ACTOR_STYLE[actor.name];
+  const ax = ACT_CX + 18;   // actor right exit point x
+  const ay = actor.cy;       // actor center y
+
+  actor.connects.forEach(id => {
+    const uy = ucY[id];
+    const d = `M ${ax},${ay} C ${CP1X},${ay} ${CP2X},${uy} ${OV_LEFT},${uy}`;
+    add(mk("path",{
+      d, fill:"none",
+      stroke:"#444",
+      "stroke-width":"1.2",
+      "marker-end":"url(#arr)"
+    }));
+  });
+});
+
+// ─── STICK FIGURES (drawn after curves so they sit on top) ───────────────────
+function drawActor(cx,cy,name,st){
+  const HR=13, HT=cy-28;
+  // colored body fill circle
+  add(mk("circle",{cx,cy:HT,r:HR,fill:st.fill,stroke:st.stroke,"stroke-width":"1.8"}));
+  line(cx,HT+HR,    cx,    HT+HR+35,{stroke:st.stroke,"stroke-width":"1.8"});
+  line(cx,HT+HR+14, cx-18, HT+HR+29,{stroke:st.stroke,"stroke-width":"1.8"});
+  line(cx,HT+HR+14, cx+18, HT+HR+29,{stroke:st.stroke,"stroke-width":"1.8"});
+  line(cx,HT+HR+35, cx-16, HT+HR+60,{stroke:st.stroke,"stroke-width":"1.8"});
+  line(cx,HT+HR+35, cx+16, HT+HR+60,{stroke:st.stroke,"stroke-width":"1.8"});
+  text(cx, HT+HR+76, name,
+       {"font-size":"12","font-weight":"bold",fill:"#111"});
+}
+
+ACTORS.forEach(a => drawActor(ACT_CX, a.cy, a.name, ACTOR_STYLE[a.name]));
+
+</script>
+</body>
+</html>

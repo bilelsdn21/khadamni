@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from bson import ObjectId
@@ -29,8 +30,21 @@ async def ai_analyze_request(
     """
     try:
         return await analyze_request(body.description)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="The AI service is taking too long to respond. Please try again in a few seconds."
+        )
+    except ConnectionError:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to reach the AI service. Please check your connection and try again."
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI unavailable: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="The AI analysis failed unexpectedly. Please try again."
+        )
 
 
 @router.get("/price-stats/{category}")
@@ -101,8 +115,21 @@ async def ai_report(
 
     try:
         analysis = await analyze_dispute(req_info, messages, reporter_role, body.reason)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI unavailable: {str(e)}")
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="The AI dispute analysis timed out. The conversation may be too long. Please try again."
+        )
+    except ConnectionError:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to reach the AI service. Please check your connection and try again."
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="The AI dispute analysis failed unexpectedly. Please try again."
+        )
 
     # Persist the report for moderator review
     await db.reports.insert_one({

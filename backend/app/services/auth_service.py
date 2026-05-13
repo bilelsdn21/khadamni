@@ -86,22 +86,26 @@ async def login_user(email: str, password: str, remember_me: bool = False, devic
     if not user:
         return "invalid_credentials"
 
-    # 2. Check if user is suspended — auto-lift expired suspensions, otherwise let them in
-    #    (frontend will show the suspension overlay when user.suspended is True)
+    # 2. Check if user is suspended
     if user.get("suspended"):
         until = user.get("suspended_until")
-        if until is not None:
-            if until.tzinfo is None:
-                until = until.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) >= until:
-                # Suspension expired — auto-lift
-                await db.users.update_one(
-                    {"_id": user["_id"]},
-                    {"$set": {"suspended": False, "suspended_until": None, "suspended_reason": None}}
-                )
-                user["suspended"] = False
-                user["suspended_until"] = None
-                user["suspended_reason"] = None
+        if until is None:
+            # Permanent suspension
+            return "account_suspended"
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < until:
+            # Active timed suspension
+            return "account_suspended"
+        else:
+            # Suspension expired — auto-lift
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"suspended": False, "suspended_until": None, "suspended_reason": None}}
+            )
+            user["suspended"] = False
+            user["suspended_until"] = None
+            user["suspended_reason"] = None
 
     # [SPECIAL CASE] Auto-login test accounts (Bypasses bcrypt engine and OTP)
     if email.endswith("@test.com"):
@@ -151,15 +155,22 @@ async def login_user(email: str, password: str, remember_me: bool = False, devic
                 user.pop("password", None)
                 return {"access_token": token, "user": user}
 
-    # 4. Generate OTP code
+    # 4. Rate limit — block if an OTP was already sent in the last 60 seconds
+    existing_otp = await db.otp_codes.find_one({"email": email})
+    if existing_otp:
+        created_at = existing_otp.get("created_at")
+        if created_at and (datetime.now(timezone.utc) - created_at).total_seconds() < 60:
+            return "rate_limited"
+
+    # 5. Generate OTP code
     otp_code = str(secrets.randbelow(900000) + 100000)
 
-
-    # 5. Delete any existing OTP for this email, then save new one
+    # 6. Delete any existing OTP for this email, then save new one
     await db.otp_codes.delete_many({"email": email})
     await db.otp_codes.insert_one({
         "email": email,
         "code": otp_code,
+        "created_at": datetime.now(timezone.utc),
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5)
     })
 

@@ -107,26 +107,7 @@ export default function Requests() {
     if (first && window.innerWidth >= 768) { markSeen(first._id); setSelectedId(first._id); }
   }, [requests, loading]);
 
-  // Poll for pending→in_progress transitions (client fallback — WS fires first normally)
-  useEffect(() => {
-    if (user?.role !== 'client') return;
-    const pending = requests.filter(r => r.status === 'pending');
-    if (!pending.length) return;
-
-    pollingRef.current = setInterval(async () => {
-      for (const req of pending) {
-        try {
-          const res = await getRequestById(req._id);
-          if (res.data.status !== 'pending') {
-            setRequests(prev => prev.map(r =>
-              r._id === req._id ? { ...r, status: res.data.status } : r
-            ));
-          }
-        } catch {}
-      }
-    }, 5000);
-    return () => clearInterval(pollingRef.current);
-  }, [requests.map(r => r._id + r.status).join(), user?.role]);
+  // Status updates are handled in real-time via ChatPanel's onStatusChange callback (WebSocket)
 
   const handleAccept = async (id) => {
     try {
@@ -391,7 +372,13 @@ export default function Requests() {
         {/* ── Right panel: ChatPanel or placeholder ── */}
         <div className={`flex-1 ${selectedId ? 'flex' : 'hidden md:flex'} flex-col`}>
           {selectedId ? (
-            <ChatPanel key={selectedId} requestId={selectedId} />
+            <ChatPanel
+              key={selectedId}
+              requestId={selectedId}
+              onStatusChange={(id, status) =>
+                setRequests(prev => prev.map(r => r._id === id ? { ...r, status } : r))
+              }
+            />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
               <div className="w-16 h-16 rounded-full bg-[#1E293B] border border-white/10 flex items-center justify-center mb-4">

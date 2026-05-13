@@ -1,0 +1,49 @@
+SECURITY TESTS — EXECUTION LOG
+================================
+
+SEC-AUTH-001 — OTP Expiry Enforcement
+  Method : Registered a new account, waited for the 5-minute OTP window to pass, then submitted the expired code via the login form.
+  Result : Backend rejected the code and returned an error asking the user to restart the login process.
+  Status : Pass
+
+SEC-AUTH-002 — OTP Single Use Enforcement
+  Method : Verified a new account with a valid OTP, then immediately submitted the same code a second time.
+  Result : Second submission was rejected; OTP document was deleted from otp_codes after first use.
+  Status : Pass
+
+SEC-JWT-001 — JWT Verification on Protected Routes
+  Command:
+    curl.exe -s -o NUL -w "%{http_code}" http://localhost:8000/api/requests/my -H "Authorization: Bearer thisisnotavalidtoken"
+  Result : 401 Unauthorized
+  Status : Pass
+
+SEC-RBAC-001 — Role-Based Access Control
+  Command:
+    curl.exe -s -o NUL -w "%{http_code}" http://localhost:8000/api/moderator/stats -H "Authorization: Bearer <client_token>"
+  Result : 403 Forbidden
+  Status : Pass
+
+SEC-SUSP-001 — Suspended Account Login Block
+  Method : Suspended client1@test.com via the moderator dashboard, then attempted login.
+  Command:
+    curl.exe -s -w "\n%{http_code}" http://localhost:8000/api/auth/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"client1@test.com\",\"password\":\"Test1234!\"}"
+  Result : 403 Forbidden — "Account suspended"
+  Status : Pass
+
+perfermance :
+# Run from backend/ directory:
+
+# PERF-001 — Normal load
+venv\Scripts\locust -f tests/locustfile.py --headless -u 50  -r 5  -t 3m --host http://localhost:8000
+
+# PERF-002 — Peak load
+venv\Scripts\locust -f tests/locustfile.py --headless -u 200 -r 10 -t 3m --host http://localhost:8000
+
+# PERF-003 — Stress test
+venv\Scripts\locust -f tests/locustfile.py --headless -u 500 -r 20 -t 3m --host http://localhost:8000
+
+# PERF-005 — AI only  (uses --tags to filter)
+venv\Scripts\locust -f tests/locustfile.py --headless -u 10  -r 2  -t 2m --tags ai  --host http://localhost:8000
+
+# PERF-006 — Geo only  (uses --tags to filter)
+venv\Scripts\locust -f tests/locustfile.py --headless -u 50  -r 5  -t 2m --tags geo --host http://localhost:8000

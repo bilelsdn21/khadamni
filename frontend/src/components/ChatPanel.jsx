@@ -7,7 +7,7 @@ import { submitRating, getJobRatings } from '../api/ratings';
 import api from '../api/axios';
 import { useToast } from './Toast';
 
-export default function ChatPanel({ requestId }) {
+export default function ChatPanel({ requestId, onStatusChange }) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -145,11 +145,16 @@ export default function ChatPanel({ requestId }) {
           break;
         case 'request_accepted':
           setRoomData(prev => prev ? { ...prev, request_status: 'in_progress' } : prev);
+          onStatusChange?.(requestId, 'in_progress');
           toast('Provider accepted your request!', 'success');
           break;
         case 'job_completed':
           setIsCompleted(true);
           setBothConfirmed(true);
+          onStatusChange?.(requestId, 'completed');
+          break;
+        case 'confirmed':
+          onStatusChange?.(requestId, 'confirmed');
           break;
       }
     };

@@ -221,6 +221,7 @@ export default function Map() {
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [aiRemoteSuggestions, setAiRemoteSuggestions] = useState([]);
   const [aiStep, setAiStep] = useState(null); // null | 'analyzing' | 'finding' | 'done'
+  const [aiError, setAiError] = useState(null);
   const [aiPlatformPrices, setAiPlatformPrices] = useState(null); // { min, max, avg }
   const [recentAiSearches, setRecentAiSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem('recent_ai_searches') || '[]'); } catch { return []; }
@@ -424,6 +425,7 @@ export default function Map() {
     if (queryOverride) setAiQuery(queryOverride);
     setAiLoading(true);
     setAiStep('analyzing');
+    setAiError(null);
     setAiSuggestions([]);
     setAiRemoteSuggestions([]);
     setAiPlatformPrices(null);
@@ -491,6 +493,8 @@ export default function Map() {
     } catch (err) {
       console.error('AI search failed:', err);
       setAiStep(null);
+      const msg = err?.response?.data?.detail;
+      setAiError(msg || 'The AI service is unavailable. Please try again.');
     } finally {
       setAiLoading(false);
     }
@@ -1115,6 +1119,20 @@ export default function Map() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* AI error banner */}
+              {aiError && !aiLoading && (
+                <div className="border-t border-red-500/20 px-4 py-3 flex items-start gap-2">
+                  <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-red-400 text-xs font-semibold">AI Analysis Failed</p>
+                    <p className="text-red-300/70 text-xs mt-0.5">{aiError}</p>
+                  </div>
+                  <button onClick={() => setAiError(null)} className="text-white/30 hover:text-white/60 text-lg leading-none flex-shrink-0">×</button>
                 </div>
               )}
 

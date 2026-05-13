@@ -65,6 +65,12 @@ async def login(user: UserLogin):
     if result == "invalid_credentials":
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    if result == "account_suspended":
+        raise HTTPException(status_code=403, detail="Account suspended")
+
+    if result == "rate_limited":
+        raise HTTPException(status_code=429, detail="Please wait 60 seconds before requesting a new code")
+
     # trusted device — skip OTP
     if isinstance(result, dict):
         return result

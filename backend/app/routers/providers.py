@@ -8,15 +8,20 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/api/providers", tags=["Providers"])
 
 
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
 @router.get("/geocode")
 async def geocode(q: str = Query(...)):
-    async with httpx.AsyncClient() as client:
-        res = await client.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": q, "format": "json", "limit": 5},
-            headers={"User-Agent": "Khadamni/1.0 (service marketplace app)"}
-        )
-    return res.json()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(
+                NOMINATIM_URL,
+                params={"q": q, "format": "json", "limit": 5},
+                headers={"User-Agent": "Khadamni/1.0 (service marketplace app)"}
+            )
+        return res.json()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Geocoding service unavailable. Use your current location instead.")
 
 
 @router.get("/all_providers")

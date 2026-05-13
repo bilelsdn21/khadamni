@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Khadamni — Database Architecture</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #020817;
+  background-image:
+    radial-gradient(ellipse at 15% 15%, rgba(34,197,94,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 85%, rgba(59,130,246,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(168,85,247,0.04) 0%, transparent 60%);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* Dot grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page-header {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  padding: 44px 20px 18px;
+}
+
+.page-header h1 {
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #22C55E 0%, #3B82F6 50%, #A855F7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 6px;
+}
+
+.page-header .subtitle {
+  color: rgba(255,255,255,0.35);
+  font-size: 0.82rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.legend {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 20px;
+  flex-wrap: wrap;
+  padding: 14px 20px 20px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.04em;
+}
+
+.legend-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.1);
+}
+
+.legend-badge {
+  font-family: 'Consolas', monospace;
+  font-size: 0.66rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ── Canvas ── */
+.canvas-wrap {
+  position: relative;
+  width: 1680px;
+  height: 1230px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+svg.lines {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Cards ── */
+.card {
+  position: absolute;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(10,18,35,0.85);
+  backdrop-filter: blur(24px);
+  overflow: hidden;
+  z-index: 3;
+  transition: transform 0.25s cubic-bezier(.22,.68,0,1.2), box-shadow 0.25s;
+  cursor: default;
+}
+
+.card:hover { transform: translateY(-5px) scale(1.01); }
+
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 14px 0 0 14px;
+}
+
+/* Categories */
+.c-auth   { border-color: rgba(34,197,94,0.28); }
+.c-auth::before  { background: linear-gradient(180deg,#22C55E,#16A34A); }
+.c-auth .ch  { background: rgba(34,197,94,0.07); border-bottom: 1px solid rgba(34,197,94,0.15); }
+.c-auth:hover { box-shadow: 0 24px 70px rgba(34,197,94,0.12); }
+
+.c-core   { border-color: rgba(59,130,246,0.28); }
+.c-core::before  { background: linear-gradient(180deg,#3B82F6,#1D4ED8); }
+.c-core .ch  { background: rgba(59,130,246,0.07); border-bottom: 1px solid rgba(59,130,246,0.15); }
+.c-core:hover { box-shadow: 0 24px 70px rgba(59,130,246,0.12); }
+
+.c-chat   { border-color: rgba(168,85,247,0.28); }
+.c-chat::before  { background: linear-gradient(180deg,#A855F7,#7C3AED); }
+.c-chat .ch  { background: rgba(168,85,247,0.07); border-bottom: 1px solid rgba(168,85,247,0.15); }
+.c-chat:hover { box-shadow: 0 24px 70px rgba(168,85,247,0.12); }
+
+.c-rating { border-color: rgba(245,158,11,0.28); }
+.c-rating::before { background: linear-gradient(180deg,#F59E0B,#D97706); }
+.c-rating .ch { background: rgba(245,158,11,0.07); border-bottom: 1px solid rgba(245,158,11,0.15); }
+.c-rating:hover { box-shadow: 0 24px 70px rgba(245,158,11,0.12); }
+
+.c-content{ border-color: rgba(6,182,212,0.28); }
+.c-content::before{ background: linear-gradient(180deg,#06B6D4,#0891B2); }
+.c-content .ch{ background: rgba(6,182,212,0.07); border-bottom: 1px solid rgba(6,182,212,0.15); }
+.c-content:hover { box-shadow: 0 24px 70px rgba(6,182,212,0.12); }
+
+.c-mod    { border-color: rgba(239,68,68,0.28); }
+.c-mod::before    { background: linear-gradient(180deg,#EF4444,#DC2626); }
+.c-mod .ch    { background: rgba(239,68,68,0.07); border-bottom: 1px solid rgba(239,68,68,0.15); }
+.c-mod:hover { box-shadow: 0 24px 70px rgba(239,68,68,0.12); }
+
+/* Card header */
+.ch {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ch-icon { font-size: 1.05rem; flex-shrink: 0; }
+
+.ch-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.03em;
+  font-family: 'Consolas', monospace;
+}
+
+.ch-desc {
+  font-size: 0.62rem;
+  color: rgba(255,255,255,0.38);
+  margin-top: 1px;
+}
+
+/* Fields */
+.cb { padding-bottom: 6px; }
+
+.fr {
+  display: flex;
+  align-items: center;
+  padding: 4px 14px;
+  gap: 7px;
+  border-top: 1px solid rgba(255,255,255,0.035);
+  transition: background 0.15s;
+}
+
+.fr:hover { background: rgba(255,255,255,0.025); }
+
+.fn {
+  flex: 1;
+  font-size: 0.69rem;
+  color: rgba(255,255,255,0.65);
+  font-family: 'Consolas', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ft {
+  font-size: 0.58rem;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: 'Consolas', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.b-pk   { background:rgba(251,191,36,0.13);  color:#FCD34D; border:1px solid rgba(251,191,36,0.3); }
+.b-fk   { background:rgba(99,102,241,0.13);  color:#A5B4FC; border:1px solid rgba(99,102,241,0.3); }
+.b-str  { background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.38); border:1px solid rgba(255,255,255,0.1); }
+.b-num  { background:rgba(34,211,238,0.1);   color:#67E8F9; border:1px solid rgba(34,211,238,0.25); }
+.b-bool { background:rgba(251,113,133,0.1);  color:#FDA4AF; border:1px solid rgba(251,113,133,0.25); }
+.b-date { background:rgba(167,139,250,0.12); color:#C4B5FD; border:1px solid rgba(167,139,250,0.3); }
+.b-arr  { background:rgba(52,211,153,0.1);   color:#6EE7B7; border:1px solid rgba(52,211,153,0.25); }
+.b-geo  { background:rgba(249,115,22,0.13);  color:#FCA57A; border:1px solid rgba(249,115,22,0.3); }
+.b-idx  { background:rgba(250,204,21,0.1);   color:#FDE68A; border:1px solid rgba(250,204,21,0.3); }
+.b-hash { background:rgba(239,68,68,0.1);    color:#FCA5A5; border:1px solid rgba(239,68,68,0.25); }
+.b-enum { background:rgba(236,72,153,0.1);   color:#F9A8D4; border:1px solid rgba(236,72,153,0.25); }
+.b-uuid { background:rgba(20,184,166,0.1);   color:#5EEAD4; border:1px solid rgba(20,184,166,0.3); }
+
+.fdiv { height: 1px; background: rgba(255,255,255,0.05); margin: 3px 0; }
+
+/* Enum pill strip */
+.enums {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 3px 14px 5px;
+  border-top: 1px solid rgba(255,255,255,0.035);
+}
+
+.epill {
+  font-size: 0.57rem;
+  padding: 1px 6px;
+  border-radius: 20px;
+  font-family: monospace;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.04);
+}
+
+/* GEO badge annotation */
+.geo-note {
+  font-size: 0.6rem;
+  padding: 4px 14px 6px;
+  color: rgba(249,115,22,0.7);
+  border-top: 1px solid rgba(249,115,22,0.1);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── Stats bar at bottom ── */
+.stats-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg,#22C55E,#3B82F6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Khadamni — Database Architecture</h1>
+  <p class="subtitle">MongoDB &nbsp;·&nbsp; 10 Collections &nbsp;·&nbsp; 2dsphere Geospatial Index &nbsp;·&nbsp; Motor Async Driver</p>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#22C55E"></div> Auth &amp; Security</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3B82F6"></div> Core Entities</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#A855F7"></div> Chat &amp; Messaging</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div> Ratings</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#06B6D4"></div> Content</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div> Moderation</div>
+  <div class="legend-sep"></div>
+  <div class="legend-item"><span class="legend-badge" style="background:rgba(251,191,36,0.13);color:#FCD34D;border:1px solid rgba(251,191,36,0.3)">PK</span> Primary Key</div>
+  <div class="legend-item"><span class="legend-badge" style="background:rgba(99,102,241,0.13);color:#A5B4FC;border:1px solid rgba(99,102,241,0.3)">FK</span> Foreign Key</div>
+  <div class="legend-item"><span class="legend-badge" style="background:rgba(250,204,21,0.1);color:#FDE68A;border:1px solid rgba(250,204,21,0.3)">IDX</span> Indexed</div>
+  <div class="legend-item"><span class="legend-badge" style="background:rgba(249,115,22,0.13);color:#FCA57A;border:1px solid rgba(249,115,22,0.3)">GEO</span> 2dsphere</div>
+</div>
+
+<div class="canvas-wrap" id="canvas">
+<svg class="lines" id="svg-lines"></svg>
+
+<!-- ─── USERS ─── (central hub, top center) -->
+<div class="card c-auth" id="col-users" style="left:680px;top:30px;width:262px">
+  <div class="ch">
+    <span class="ch-icon">👤</span>
+    <div><div class="ch-name">users</div><div class="ch-desc">All platform accounts · 3 roles</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">first_name</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">last_name</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">email</span><span class="ft b-idx">IDX</span></div>
+    <div class="fr"><span class="fn">password</span><span class="ft b-hash">PBKDF2</span></div>
+    <div class="fr"><span class="fn">role</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">client</span><span class="epill">provider</span><span class="epill">moderator</span></div>
+    <div class="fr"><span class="fn">phone</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">avatar</span><span class="ft b-str">filename?</span></div>
+    <div class="fr"><span class="fn">latitude / longitude</span><span class="ft b-num">float?</span></div>
+    <div class="fdiv"></div>
+    <div class="fr"><span class="fn">suspended</span><span class="ft b-bool">bool</span></div>
+    <div class="fr"><span class="fn">suspended_reason</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">suspended_until</span><span class="ft b-date">date?</span></div>
+  </div>
+</div>
+
+<!-- ─── OTP CODES ─── (top left) -->
+<div class="card c-auth" id="col-otp" style="left:60px;top:80px;width:216px">
+  <div class="ch">
+    <span class="ch-icon">🔐</span>
+    <div><div class="ch-name">otp_codes</div><div class="ch-desc">Two-factor auth · 5 min TTL</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">email</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">code</span><span class="ft b-str">6-digit</span></div>
+    <div class="fr"><span class="fn">created_at</span><span class="ft b-date">date</span></div>
+    <div class="fr"><span class="fn">expires_at</span><span class="ft b-date">+5 min</span></div>
+  </div>
+</div>
+
+<!-- ─── DEVICE TOKENS ─── (mid left) -->
+<div class="card c-auth" id="col-device" style="left:60px;top:360px;width:216px">
+  <div class="ch">
+    <span class="ch-icon">📱</span>
+    <div><div class="ch-name">device_tokens</div><div class="ch-desc">Trusted devices · skip OTP</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">email</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">token</span><span class="ft b-uuid">UUID</span></div>
+    <div class="fr"><span class="fn">expires_at</span><span class="ft b-date">+30 days</span></div>
+  </div>
+</div>
+
+<!-- ─── PROVIDER PROFILES ─── (top right) -->
+<div class="card c-core" id="col-provider" style="left:1120px;top:50px;width:244px">
+  <div class="ch">
+    <span class="ch-icon">🔧</span>
+    <div><div class="ch-name">provider_profiles</div><div class="ch-desc">Provider service data</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">user_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">full_name</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">bio</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">service_categories</span><span class="ft b-arr">[ ]</span></div>
+    <div class="fr"><span class="fn">custom_category</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">hourly_rate</span><span class="ft b-num">float?</span></div>
+    <div class="fr"><span class="fn">experience_years</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">job_type</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">in_place</span><span class="epill">remote</span></div>
+    <div class="fr"><span class="fn">is_available</span><span class="ft b-bool">bool</span></div>
+    <div class="fr"><span class="fn">rating_avg</span><span class="ft b-num">float</span></div>
+    <div class="fr"><span class="fn">rating_count</span><span class="ft b-num">int</span></div>
+    <div class="fr"><span class="fn">total_jobs</span><span class="ft b-num">int</span></div>
+    <div class="fr"><span class="fn">latitude / longitude</span><span class="ft b-num">float?</span></div>
+    <div class="fr"><span class="fn">location</span><span class="ft b-geo">GEO ⬡</span></div>
+    <div class="geo-note">⬡ 2dsphere index — proximity queries</div>
+  </div>
+</div>
+
+<!-- ─── REPORTS ─── (far right) -->
+<div class="card c-mod" id="col-reports" style="left:1410px;top:260px;width:244px">
+  <div class="ch">
+    <span class="ch-icon">🚩</span>
+    <div><div class="ch-name">reports</div><div class="ch-desc">AI dispute mediation</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">request_id</span><span class="ft b-fk">→ requests</span></div>
+    <div class="fr"><span class="fn">reporter_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">status</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">pending</span><span class="epill">reviewed</span></div>
+    <div class="fr"><span class="fn">ai_summary</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">ai_recommendation</span><span class="ft b-enum">enum?</span></div>
+    <div class="enums"><span class="epill">client_favored</span><span class="epill">provider_favored</span><span class="epill">neutral</span></div>
+    <div class="fr"><span class="fn">ai_suggested_action</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">moderator_note</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">created_at</span><span class="ft b-date">date</span></div>
+  </div>
+</div>
+
+<!-- ─── SERVICE REQUESTS ─── (center) -->
+<div class="card c-core" id="col-requests" style="left:620px;top:430px;width:262px">
+  <div class="ch">
+    <span class="ch-icon">📋</span>
+    <div><div class="ch-name">service_requests</div><div class="ch-desc">Job lifecycle · state machine</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">client_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">provider_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">provider_profile_id</span><span class="ft b-fk">→ profiles</span></div>
+    <div class="fr"><span class="fn">description</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">status</span><span class="ft b-enum">enum</span></div>
+    <div class="enums">
+      <span class="epill">pending</span><span class="epill">in_progress</span>
+      <span class="epill">completed</span><span class="epill">rejected</span><span class="epill">cancelled</span>
+    </div>
+    <div class="fr"><span class="fn">job_type</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">in_place</span><span class="epill">remote</span></div>
+    <div class="fr"><span class="fn">service_category</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">agreed_price</span><span class="ft b-num">float?</span></div>
+    <div class="fr"><span class="fn">created_at</span><span class="ft b-date">date</span></div>
+    <div class="fr"><span class="fn">updated_at</span><span class="ft b-date">date</span></div>
+  </div>
+</div>
+
+<!-- ─── PORTFOLIO ─── (right of service_requests) -->
+<div class="card c-content" id="col-portfolio" style="left:1120px;top:530px;width:218px">
+  <div class="ch">
+    <span class="ch-icon">🖼️</span>
+    <div><div class="ch-name">portfolio</div><div class="ch-desc">Provider image gallery</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">user_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">filename</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">created_at</span><span class="ft b-date">date</span></div>
+  </div>
+</div>
+
+<!-- ─── CHAT ROOMS ─── (bottom left) -->
+<div class="card c-chat" id="col-rooms" style="left:300px;top:680px;width:238px">
+  <div class="ch">
+    <span class="ch-icon">💬</span>
+    <div><div class="ch-name">chat_rooms</div><div class="ch-desc">Conversation containers</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">request_id</span><span class="ft b-fk">→ requests</span></div>
+    <div class="fr"><span class="fn">client_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">provider_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">negotiation_status</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">open</span><span class="epill">agreed</span><span class="epill">closed</span></div>
+  </div>
+</div>
+
+<!-- ─── RATINGS ─── (bottom center-right) -->
+<div class="card c-rating" id="col-ratings" style="left:1010px;top:680px;width:228px">
+  <div class="ch">
+    <span class="ch-icon">⭐</span>
+    <div><div class="ch-name">ratings</div><div class="ch-desc">Bidirectional post-job scores</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">job_id</span><span class="ft b-fk">→ requests</span></div>
+    <div class="fr"><span class="fn">rater_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">rated_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">score</span><span class="ft b-num">1 – 5</span></div>
+    <div class="fr"><span class="fn">comment</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">created_at</span><span class="ft b-date">date</span></div>
+  </div>
+</div>
+
+<!-- ─── CHAT MESSAGES ─── (bottom) -->
+<div class="card c-chat" id="col-messages" style="left:240px;top:960px;width:262px">
+  <div class="ch">
+    <span class="ch-icon">✉️</span>
+    <div><div class="ch-name">chat_messages</div><div class="ch-desc">Messages, offers &amp; events</div></div>
+  </div>
+  <div class="cb">
+    <div class="fr"><span class="fn">_id</span><span class="ft b-pk">PK</span></div>
+    <div class="fr"><span class="fn">room_id</span><span class="ft b-fk">→ chat_rooms</span></div>
+    <div class="fr"><span class="fn">sender_id</span><span class="ft b-fk">→ users</span></div>
+    <div class="fr"><span class="fn">message</span><span class="ft b-str">str</span></div>
+    <div class="fr"><span class="fn">message_type</span><span class="ft b-enum">enum</span></div>
+    <div class="enums"><span class="epill">text</span><span class="epill">offer</span><span class="epill">system</span></div>
+    <div class="fr"><span class="fn">offer_amount</span><span class="ft b-num">float?</span></div>
+    <div class="fr"><span class="fn">offer_note</span><span class="ft b-str">str?</span></div>
+    <div class="fr"><span class="fn">offer_status</span><span class="ft b-enum">enum?</span></div>
+    <div class="enums"><span class="epill">pending</span><span class="epill">accepted</span><span class="epill">rejected</span></div>
+    <div class="fr"><span class="fn">timestamp</span><span class="ft b-date">date</span></div>
+    <div class="fr"><span class="fn">is_read</span><span class="ft b-bool">bool</span></div>
+  </div>
+</div>
+
+</div><!-- /canvas-wrap -->
+
+<div class="stats-bar">
+  <div class="stat"><div class="stat-num">10</div><div class="stat-label">Collections</div></div>
+  <div class="stat"><div class="stat-num">1</div><div class="stat-label">2dsphere Index</div></div>
+  <div class="stat"><div class="stat-num">3</div><div class="stat-label">User Roles</div></div>
+  <div class="stat"><div class="stat-num">5</div><div class="stat-label">Request States</div></div>
+  <div class="stat"><div class="stat-num">3</div><div class="stat-label">Message Types</div></div>
+</div>
+
+<script>
+const CONNECTIONS = [
+  { from:'col-users',    to:'col-otp',      color:'#22C55E', dashed:true  },
+  { from:'col-users',    to:'col-device',   color:'#22C55E', dashed:true  },
+  { from:'col-users',    to:'col-provider', color:'#3B82F6', dashed:false },
+  { from:'col-users',    to:'col-requests', color:'#3B82F6', dashed:false },
+  { from:'col-users',    to:'col-portfolio',color:'#06B6D4', dashed:true  },
+  { from:'col-provider', to:'col-requests', color:'#3B82F6', dashed:false },
+  { from:'col-requests', to:'col-rooms',    color:'#A855F7', dashed:false },
+  { from:'col-requests', to:'col-ratings',  color:'#F59E0B', dashed:false },
+  { from:'col-requests', to:'col-reports',  color:'#EF4444', dashed:false },
+  { from:'col-rooms',    to:'col-messages', color:'#A855F7', dashed:false },
+];
+
+function getBox(id) {
+  const el = document.getElementById(id);
+  const cr = document.getElementById('canvas').getBoundingClientRect();
+  const r  = el.getBoundingClientRect();
+  return {
+    cx: r.left - cr.left + r.width / 2,
+    cy: r.top  - cr.top  + r.height / 2,
+    l:  r.left - cr.left,
+    r:  r.right - cr.left,
+    t:  r.top  - cr.top,
+    b:  r.bottom - cr.top,
+    w:  r.width, h: r.height
+  };
+}
+
+function edgePoints(a, b) {
+  const dx = b.cx - a.cx, dy = b.cy - a.cy;
+  let x1, y1, x2, y2;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    y1 = a.cy + dy * 0.1;
+    y2 = b.cy - dy * 0.1;
+    if (dx > 0) { x1 = a.r; x2 = b.l; }
+    else         { x1 = a.l; x2 = b.r; }
+  } else {
+    x1 = a.cx + dx * 0.1;
+    x2 = b.cx - dx * 0.1;
+    if (dy > 0) { y1 = a.b; y2 = b.t; }
+    else         { y1 = a.t; y2 = b.b; }
+  }
+  return { x1, y1, x2, y2 };
+}
+
+function draw() {
+  const svg = document.getElementById('svg-lines');
+  const canvas = document.getElementById('canvas');
+  svg.setAttribute('viewBox', `0 0 ${canvas.offsetWidth} ${canvas.offsetHeight}`);
+
+  // Build defs
+  let defs = `<defs>`;
+  const usedColors = [...new Set(CONNECTIONS.map(c => c.color))];
+  usedColors.forEach(color => {
+    const id = 'arr' + color.replace('#','');
+    defs += `<marker id="${id}" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0.5 L0,5.5 L7,3 z" fill="${color}" opacity="0.75"/>
+    </marker>`;
+  });
+  defs += `</defs>`;
+
+  let paths = '';
+  CONNECTIONS.forEach(conn => {
+    try {
+      const a = getBox(conn.from), b = getBox(conn.to);
+      const { x1, y1, x2, y2 } = edgePoints(a, b);
+      const midX = (x1 + x2) / 2;
+      const d = `M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`;
+      const arrId = 'arr' + conn.color.replace('#','');
+
+      // Glow
+      paths += `<path d="${d}" fill="none" stroke="${conn.color}" stroke-width="7" opacity="0.07"/>`;
+      // Main line
+      const dash = conn.dashed ? 'stroke-dasharray="6 4"' : '';
+      paths += `<path d="${d}" fill="none" stroke="${conn.color}" stroke-width="1.6" opacity="0.55" ${dash} marker-end="url(#${arrId})"/>`;
+    } catch(e) {}
+  });
+
+  svg.innerHTML = defs + paths;
+}
+
+window.addEventListener('load', () => setTimeout(draw, 80));
+window.addEventListener('resize', draw);
+</script>
+</body>
+</html>

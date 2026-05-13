@@ -1,5 +1,6 @@
 import json
-from groq import AsyncGroq
+import asyncio
+from groq import AsyncGroq, APITimeoutError, APIConnectionError, APIStatusError
 from app.database import get_db
 from app.config import settings
 
@@ -25,15 +26,27 @@ def _strip_fences(text: str) -> str:
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     return text.strip()
 
-async def _generate(prompt: str) -> str:
+async def _generate(prompt: str, timeout: float = 30.0) -> str:
     client = _get_client()
-    response = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            ),
+            timeout=timeout,
+        )
+        return response.choices[0].message.content
+    except asyncio.TimeoutError:
+        raise asyncio.TimeoutError("AI service took too long to respond")
+    except APITimeoutError:
+        raise asyncio.TimeoutError("AI service request timed out")
+    except APIConnectionError:
+        raise ConnectionError("Unable to reach the AI service")
+    except APIStatusError as e:
+        raise RuntimeError(f"AI service returned an error: {e.status_code}")
 
 
 async def analyze_request(description: str) -> dict:
