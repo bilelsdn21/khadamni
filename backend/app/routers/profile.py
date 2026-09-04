@@ -1,7 +1,7 @@
-import os
 import uuid
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from app.dependencies import get_current_user
+from app.services import storage
 from app.models.profile import ClientProfileUpdate, ProviderProfileUpdate
 from app.services.profile_service import get_my_profile, update_my_profile
 from app.utils.security import hash_password, verify_password
@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/profile", tags=["Profile"])
 
-UPLOAD_DIR = "uploads"
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
@@ -67,18 +66,14 @@ async def upload_avatar(
 
     ext = image.filename.rsplit(".", 1)[-1].lower()
     filename = f"avatar_{current_user['_id']}_{uuid.uuid4().hex[:8]}.{ext}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    with open(filepath, "wb") as f:
-        f.write(contents)
+    await storage.save_file(contents, filename, image.content_type)
 
     db = get_db()
     # Delete old avatar file if present
     user = await db.users.find_one({"_id": ObjectId(current_user["_id"])})
     old_avatar = user.get("avatar") if user else None
     if old_avatar and old_avatar != filename:
-        old_path = os.path.join(UPLOAD_DIR, old_avatar)
-        if os.path.exists(old_path):
-            os.remove(old_path)
+        await storage.delete_file(old_avatar)
 
     await db.users.update_one({"_id": ObjectId(current_user["_id"])}, {"$set": {"avatar": filename}})
     # Also sync to provider_profiles for map popups

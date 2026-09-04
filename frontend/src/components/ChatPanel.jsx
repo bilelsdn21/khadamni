@@ -51,7 +51,7 @@ export default function ChatPanel({ requestId, onStatusChange }) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(
-      `${protocol}//${window.location.hostname}:8000/api/chat/ws/${requestId}?token=${token}`
+      `${protocol}//${window.location.host}/api/chat/ws/${requestId}?token=${token}`
     );
     wsRef.current = ws;
 

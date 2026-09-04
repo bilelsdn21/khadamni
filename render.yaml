@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: khadamni
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_NAME
+        value: khadamni
+      - key: MONGODB_URL
+        sync: false          # MongoDB Atlas connection string
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false          # Gmail app password
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_SERVER
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false          # https://<project-ref>.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false          # service_role key
+      - key: SUPABASE_BUCKET
+        value: uploads

@@ -1,13 +1,12 @@
-import os
 import uuid
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from app.dependencies import get_current_user
+from app.services import storage
 from app.services.portfolio_service import add_portfolio_item, get_portfolio, delete_portfolio_item
 
 router = APIRouter(prefix="/api/portfolio", tags=["Portfolio"])
 
-UPLOAD_DIR = "uploads"
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE = 5 * 1024 * 1024  # 5MB per image
 MAX_IMAGES = 8
@@ -36,9 +35,7 @@ async def upload_item(
 
         ext = image.filename.rsplit(".", 1)[-1].lower()
         filename = f"{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(contents)
+        await storage.save_file(contents, filename, image.content_type)
         filenames.append(filename)
 
     result = await add_portfolio_item(current_user["_id"], filenames, description)

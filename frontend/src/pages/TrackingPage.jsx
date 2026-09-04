@@ -123,7 +123,7 @@ export default function TrackingPage() {
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(
-        `${protocol}//${window.location.hostname}:8000/api/chat/ws/${requestId}?token=${token}`
+        `${protocol}//${window.location.host}/api/chat/ws/${requestId}?token=${token}`
       );
       wsRef.current = ws;
 
